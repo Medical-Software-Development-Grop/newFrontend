@@ -1,0 +1,77 @@
+.App {
+  text-align: center;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 20px;
+  color: white;
+  min-height: 100vh;
+}
+
+.info-section, .demo-section, .learning-section {
+  margin: 30px 0;
+  padding: 20px;
+  background-color: #3a3f47;
+  border-radius: 8px;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.demo-button {
+  background-color: #61dafb;
+  color: #282c34;
+  border: none;
+  padding: 12px 24px;
+  font-size: 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin: 10px;
+  transition: background-color 0.3s;
+}
+
+.demo-button:hover:not(:disabled) {
+  background-color: #21a9c7;
+}
+
+.demo-button:disabled {
+  background-color: #666;
+  cursor: not-allowed;
+}
+
+.feature-list {
+  text-align: left;
+  margin-top: 20px;
+}
+
+.feature-list ul {
+  list-style: none;
+  padding: 0;
+}
+
+.feature-list li {
+  padding: 5px 0;
+  font-size: 14px;
+}
+
+.links {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.links a {
+  color: #61dafb;
+  text-decoration: none;
+  padding: 8px 16px;
+  border: 1px solid #61dafb;
+  border-radius: 4px;
+  transition: all 0.3s;
+}
+
+.links a:hover {
+  background-color: #61dafb;
+  color: #282c34;
+}

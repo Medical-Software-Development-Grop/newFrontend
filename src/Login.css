@@ -1,0 +1,507 @@
+/* 重置和基础样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  overflow: hidden;
+}
+
+/* 主登录容器 */
+.login-container {
+  position: relative;
+  width: 1440px;
+  height: 810px;
+  display: flex;
+  background: linear-gradient(93.16deg, #E2F0FF 2.41%, #FFFFFF 165.51%);
+  overflow: hidden;
+  margin: 0 auto;
+}
+
+/* 左侧区域 - 3D图标和背景 */
+.login-left-section {
+  position: absolute;
+  width: 720px;
+  height: 810px;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #E2F0FF;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 左侧背景 */
+.left-background {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 3D电脑图标 */
+.computer-3d-icon {
+  position: relative;
+  width: 1400px;
+  height: 1000px;
+  background-image: url('./assets/computer-icon-correct.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  transform: scaleX(-1);
+  z-index: 2;
+}
+
+/* 装饰方块（参照 Figma 的 Rectangle 2 与 Rectangle 3） */
+.decor-square-lg {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  left: 50%;
+  top: 50%;
+  transform: translate(280px, -180px);
+  background: linear-gradient(77deg, rgba(115, 174, 255, 0.55) 10%, rgba(115, 174, 255, 1) 97%);
+  border-radius: 4px;
+  z-index: 3;
+}
+
+.decor-square-sm {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  left: 50%;
+  top: 50%;
+  transform: translate(275px, -165px);
+  background: linear-gradient(221deg, rgba(83, 156, 255, 1) 0%, rgba(160, 200, 255, 1) 100%);
+  border-radius: 3px;
+  z-index: 3;
+}
+
+/* 网格背景 */
+.grid-background {
+  position: absolute;
+  width: 720px;
+  height: 781px;
+  left: 22px;
+  top: -1px;
+  z-index: 1;
+  overflow: hidden;
+}
+
+/* 网格内部的Union布尔运算背景 */
+.grid-union {
+  position: absolute;
+  width: 892.93px;
+  height: 892.93px;
+  left: -56.47px;
+  top: -0.46px;
+  background: linear-gradient(180deg, #D7EAFF 0%, rgba(198, 223, 251, 0) 88%);
+}
+
+/* 网格线条容器 */
+.grid-lines {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+}
+
+/* 垂直网格线 */
+.grid-line-vertical {
+  position: absolute;
+  width: 0.93px;
+  height: 892px;
+  background: linear-gradient(180deg, #D9E9FB 0%, #FFFFFF 100%);
+  opacity: 0.8;
+}
+
+/* 水平网格线 */
+.grid-line-horizontal {
+  position: absolute;
+  height: 0.93px;
+  width: 793.04px;
+  background: linear-gradient(180deg, #D9E9FB 0%, #FFFFFF 100%);
+  opacity: 0.8;
+}
+
+/* 具体的网格线位置 */
+.grid-line-v1 { left: 50px; }
+.grid-line-v2 { left: 120px; }
+.grid-line-v3 { left: 190px; }
+.grid-line-v4 { left: 260px; }
+.grid-line-v5 { left: 330px; }
+.grid-line-v6 { left: 400px; }
+.grid-line-v7 { left: 470px; }
+.grid-line-v8 { left: 540px; }
+.grid-line-v9 { left: 610px; }
+
+.grid-line-h1 { top: 80px; }
+.grid-line-h2 { top: 160px; }
+.grid-line-h3 { top: 240px; }
+.grid-line-h4 { top: 320px; }
+.grid-line-h5 { top: 400px; }
+.grid-line-h6 { top: 480px; }
+.grid-line-h7 { top: 560px; }
+.grid-line-h8 { top: 640px; }
+.grid-line-h9 { top: 720px; }
+
+/* Union渐变 */
+.union-gradient {
+  position: absolute;
+  width: 892.93px;
+  height: 892.93px;
+  left: -56.47px;
+  top: -0.46px;
+  background: linear-gradient(180deg, #D7EAFF 0%, rgba(198, 223, 251, 0) 88.41%);
+  transform: matrix(-1, 0, 0, 1, 0, 0);
+  z-index: 0;
+}
+
+/* 右侧登录区域 */
+.login-right-section {
+  position: absolute;
+  width: 720px;
+  height: 810px;
+  right: 0;
+  top: 0;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+/* 系统标题 */
+.system-title {
+  position: absolute;
+  top: 40px;
+  right: 50px;
+  text-align: right;
+  z-index: 10;
+  width: auto;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.system-title-chinese {
+  font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-size: 24px;
+  font-weight: 500;
+  color: #0A1B39;
+  line-height: 1.4;
+  margin-bottom: 6px;
+  display: block;
+  text-align: right;
+}
+
+.system-title-english {
+  font-family: 'Arial', sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  color: #4E5969;
+  line-height: 1.4;
+  display: block;
+  text-align: right;
+}
+
+/* 登录表单包装器 */
+.login-form-wrapper {
+  width: 440px;
+  text-align: left;
+}
+
+/* 登录表单区域 */
+.login-form-area {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+/* 欢迎标题 */
+.welcome-title {
+  font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-size: 36px;
+  font-weight: 400;
+  color: #0A1B39;
+  margin: 0;
+  line-height: 1.2222222222222223;
+}
+
+/* 登录表单 */
+.login-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 输入组 */
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 输入标签 */
+.input-label {
+  font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-size: 20px;
+  font-weight: 400;
+  color: #000000;
+  line-height: 1.2;
+  margin: 0;
+}
+
+/* 输入框包装器 */
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 440px;
+  height: 44px;
+  background-color: #F2F3F5;
+  border-radius: 6px;
+  padding: 9px 12px;
+  gap: 10px;
+}
+
+/* 输入框图标 */
+.input-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 13.5px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+/* 登录输入框 */
+.login-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  color: #000000;
+  outline: none;
+  line-height: 1.5;
+}
+
+.login-input::placeholder {
+  color: #83899F;
+}
+
+/* 密码显示/隐藏按钮 */
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 登录按钮 */
+.login-button {
+  width: 440px;
+  height: 44px;
+  padding: 12px 16px;
+  font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-size: 20px;
+  font-weight: 500;
+  color: #FFFFFF;
+  background-color: #2068DD;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  line-height: 1.4;
+}
+
+.login-button:hover {
+  background-color: #1557CC;
+  transform: translateY(-1px);
+}
+
+.login-button:active {
+  transform: translateY(0);
+  background-color: #0F46BB;
+}
+
+/* 响应式设计 */
+@media (max-width: 1440px) {
+  .login-container {
+    width: 100vw;
+    height: 100vh;
+  }
+  
+  .login-left-section {
+    width: 50%;
+    height: 100%;
+  }
+  
+  .login-right-section {
+    width: 50%;
+    height: 100%;
+  }
+  
+  .computer-3d-icon {
+    width: 100%;
+    height: 100%;
+    left: 0;
+    transform: scale(0.8);
+  }
+  
+  .union-gradient {
+    width: 100%;
+    height: 100%;
+    left: 0;
+  }
+  
+  .grid-background {
+    width: 100%;
+    height: 100%;
+    left: 0;
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+  .login-container {
+    flex-direction: column;
+  }
+  
+  .login-left-section {
+    height: 40vh;
+  }
+  
+  .computer-3d-icon {
+    width: 300px;
+    height: 200px;
+  }
+  
+  .login-right-section {
+    height: 60vh;
+    padding: 20px;
+  }
+  
+  .system-header {
+    margin-bottom: 40px;
+  }
+  
+  .system-title {
+    font-size: 20px;
+  }
+  
+  .welcome-title {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-left-section {
+    height: 35vh;
+  }
+  
+  .computer-3d-icon {
+    width: 250px;
+    height: 150px;
+  }
+  
+  .login-right-section {
+    height: 65vh;
+    padding: 16px;
+  }
+  
+  .login-form-wrapper {
+    max-width: 100%;
+  }
+  
+  .system-title {
+    font-size: 18px;
+  }
+  
+  .welcome-title {
+    font-size: 16px;
+    margin-bottom: 24px;
+  }
+  
+  .input-group {
+    margin-bottom: 20px;
+  }
+  
+  .login-input {
+    height: 44px;
+    font-size: 16px;
+  }
+  
+  .login-button {
+    height: 44px;
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-left-section {
+    height: 30vh;
+  }
+  
+  .computer-3d-icon {
+    width: 200px;
+    height: 120px;
+  }
+  
+  .login-right-section {
+    height: 70vh;
+    padding: 12px;
+  }
+  
+  .system-header {
+    margin-bottom: 30px;
+  }
+  
+  .system-title {
+    font-size: 16px;
+  }
+  
+  .welcome-title {
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+  
+  .input-label {
+    font-size: 13px;
+  }
+  
+  .login-input {
+    height: 40px;
+    font-size: 14px;
+    padding: 10px 12px;
+  }
+  
+  .login-button {
+    height: 40px;
+    font-size: 14px;
+  }
+}
