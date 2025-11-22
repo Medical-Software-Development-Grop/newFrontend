@@ -21,6 +21,13 @@ export interface CellStatistics {
   cell_counts: Record<string, number>;
 }
 
+export interface CellClassificationUpdatePayload {
+  doctor_classification_category?: string;
+  model_classification_type?: string;
+  major_category?: string;
+  sub_category?: string;
+}
+
 // 获取样本的细胞分类列表
 export const getCellClassifications = async (
   sampleId?: number,
@@ -68,6 +75,28 @@ export const getCellStatistics = async (sampleId: number): Promise<CellStatistic
 
   if (!response.ok) {
     throw new Error('获取细胞统计信息失败');
+  }
+
+  return response.json();
+};
+
+// 更新细胞分类（按细胞编号）
+export const updateCellClassificationByNumber = async (
+  cellNumber: string,
+  payload: CellClassificationUpdatePayload
+): Promise<CellClassification> => {
+  const response = await fetch(`${API_BASE_URL}/api/cell-classifications/${encodeURIComponent(cellNumber)}`, {
+    method: 'PUT',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || '更新细胞分类失败');
   }
 
   return response.json();

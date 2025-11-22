@@ -551,6 +551,7 @@ const statusClassMap: Record<string, string> = {
 const SampleEdit: React.FC = () => {
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
   const [selectAll, setSelectAll] = useState(false);
+  const [batchSelectMode, setBatchSelectMode] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
@@ -1065,12 +1066,14 @@ const SampleEdit: React.FC = () => {
                 <input
                   type="date"
                   value={searchForm.startDate}
+                  placeholder="请选择日期"
                   onChange={event => handleFormChange("startDate", event.target.value)}
                 />
                 <span className="date-gap">-</span>
                 <input
                   type="date"
                   value={searchForm.endDate}
+                  placeholder="请选择日期"
                   onChange={event => handleFormChange("endDate", event.target.value)}
                 />
               </div>
@@ -1079,6 +1082,7 @@ const SampleEdit: React.FC = () => {
               <label className="form-label">审核状态</label>
               <select
                 value={searchForm.reviewStatus}
+                className={!searchForm.reviewStatus ? "placeholder" : undefined}
                 onChange={event => handleFormChange("reviewStatus", event.target.value)}
               >
                 <option value="">请选择</option>
@@ -1127,6 +1131,7 @@ const SampleEdit: React.FC = () => {
               <label className="form-label">检验医生</label>
               <select
                 value={searchForm.inspectionDoctor}
+                className={!searchForm.inspectionDoctor ? "placeholder" : undefined}
                 onChange={event => handleFormChange("inspectionDoctor", event.target.value)}
               >
                 <option value="">请选择</option>
@@ -1139,6 +1144,7 @@ const SampleEdit: React.FC = () => {
               <label className="form-label">审核医生</label>
               <select
                 value={searchForm.reviewDoctor}
+                className={!searchForm.reviewDoctor ? "placeholder" : undefined}
                 onChange={event => handleFormChange("reviewDoctor", event.target.value)}
               >
                 <option value="">请选择</option>
@@ -1190,17 +1196,42 @@ const SampleEdit: React.FC = () => {
               </button>
             </div>
           )}
+          {/* 选择工具（移出表格） */}
+          <div className="table-info" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              type="button"
+              className="action-btn"
+              onClick={() => {
+                if (batchSelectMode) {
+                  setSelectedRows([]);
+                  setSelectAll(false);
+                }
+                setBatchSelectMode(!batchSelectMode);
+              }}
+            >
+              {batchSelectMode ? '取消批量' : '批量选择'}
+            </button>
+            {batchSelectMode && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={selectAll}
+                  onChange={handleSelectAll}
+                />
+                <span>全选</span>
+              </label>
+            )}
+            {selectedRows.length > 0 && (
+              <span style={{ color: '#3a6dff', fontWeight: 600 }}>
+                已选 {selectedRows.length} 条
+              </span>
+            )}
+          </div>
           <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      checked={selectAll}
-                      onChange={handleSelectAll}
-                    />
-                  </th>
+                  {batchSelectMode && <th style={{ width: 48 }}></th>}
                   <th>样本编号</th>
                   <th>患者姓名</th>
                   <th>床号</th>
@@ -1214,15 +1245,22 @@ const SampleEdit: React.FC = () => {
               </thead>
               <tbody>
                 {pagedData.map(row => (
-                  <tr key={row.id}>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedRows.includes(row.id)}
-                        onChange={() => handleRowSelect(row.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </td>
+                  <tr
+                    key={row.id}
+                    className={selectedRows.includes(row.id) ? 'selected' : undefined}
+                    onClick={() => handleRowSelect(row.id)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {batchSelectMode && (
+                      <td onClick={(e) => e.stopPropagation()} style={{ width: 48 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRows.includes(row.id)}
+                          onChange={() => handleRowSelect(row.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                    )}
                     <td>{row.sampleNumber}</td>
                     <td>{row.patientName}</td>
                     <td>{row.bedNumber}</td>

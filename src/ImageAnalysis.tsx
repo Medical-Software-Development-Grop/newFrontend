@@ -1,9 +1,9 @@
 ﻿import React, { useMemo, useState, useEffect } from "react";
 import "./ImageAnalysis.css";
 import { getSmears, Smear } from "./api/smear";
-import { getSampleImages, ImageInfo } from "./api/image";
-import { getCellClassifications, getCellClassificationsBySampleNumber, getCellStatistics, CellClassification } from "./api/cellClassification";
-import { API_BASE_URL } from "./api/config";
+import { getSampleImages, ImageInfo, deleteSampleImage } from "./api/image";
+import { getCellClassifications, getCellClassificationsBySampleNumber, getCellStatistics, CellClassification, updateCellClassificationByNumber } from "./api/cellClassification";
+import { API_BASE_URL, getToken } from "./api/config";
 
 interface CellNode {
   id: string;
@@ -161,6 +161,13 @@ interface Sample {
   patientGender?: string;
 }
 
+interface SampleImageItem {
+  id: number;
+  url: string;
+  storagePath: string;
+  rawPath: string;
+}
+
 // 将后端Smear数据转换为前端Sample格式
 const convertSmearToSample = (smear: Smear): Sample => {
   return {
@@ -193,59 +200,104 @@ const ImageAnalysis: React.FC = () => {
   const [cellClassifications, setCellClassifications] = useState<CellClassification[]>([]);
   const [cellTreeData, setCellTreeData] = useState<CellNode[]>(cellTree);
   const [loadingCells, setLoadingCells] = useState<boolean>(false);
-  const [sampleImages, setSampleImages] = useState<ImageInfo[]>([]); // 样本的上传图片
+  const [regionImages, setRegionImages] = useState<ImageInfo[]>([]);
+  const [cellImages, setCellImages] = useState<ImageInfo[]>([]);
+  const [totalRegionCount, setTotalRegionCount] = useState<number>(0);
+  const [totalCellCount, setTotalCellCount] = useState<number>(0);
   const [loadingImages, setLoadingImages] = useState<boolean>(false);
+  const [previewImage, setPreviewImage] = useState<{ url: string; title?: string; description?: string; cell?: CellClassification } | null>(null);
+  const [isDeletingImage, setIsDeletingImage] = useState<boolean>(false);
+  const [isReviewReady, setIsReviewReady] = useState<boolean>(false);
+  const [showClassifyEditor, setShowClassifyEditor] = useState<boolean>(false);
+  const [selectedMajor, setSelectedMajor] = useState<string>("");
+  const [selectedSub, setSelectedSub] = useState<string>("");
+
+  const apiBaseUrl = useMemo(() => {
+    try {
+      return new URL(API_BASE_URL);
+    } catch (error) {
+      console.error("API_BASE_URL 无效，无法解析为URL:", API_BASE_URL, error);
+      return null;
+    }
+  }, []);
 
   const selectedNode = useMemo(() => findNode(cellTreeData, selectedNodeId), [selectedNodeId, cellTreeData]);
   
-  // 使用实际的样本图片数据，如果没有则使用默认的imageData
-  const imageData = useMemo(() => {
-    if (sampleImages.length > 0) {
-      return sampleImages.map((img, index) => {
-        // 构建完整的图片URL：如果URL是相对路径，需要添加API_BASE_URL前缀
-        let imageUrl = img.url || img.path || '';
-        
-        if (!imageUrl) {
-          console.warn(`图片 ${index} 没有URL或路径`);
-          return {
-            id: index + 1,
-            url: ''
-          };
-        }
-        
-        // 如果已经是完整URL，直接使用
-        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-          return {
-            id: index + 1,
-            url: imageUrl
-          };
-        }
-        
-        // 处理相对路径
-        if (imageUrl.startsWith('/api/images/view/')) {
-          // 如果已经包含完整路径，只需要添加API_BASE_URL前缀
-          imageUrl = `${API_BASE_URL}${imageUrl}`;
-        } else if (imageUrl.startsWith('/')) {
-          // 如果是其他相对路径
-          imageUrl = `${API_BASE_URL}${imageUrl}`;
-        } else {
-          // 如果是存储路径（如 users/1/S2510250025/区域图/xxx.png），需要编码并构建完整URL
-          // 对路径进行编码，确保中文字符正确编码
-          const encodedPath = imageUrl.split('/').map(segment => encodeURIComponent(segment)).join('/');
-          imageUrl = `${API_BASE_URL}/api/images/view/${encodedPath}`;
-        }
-        
-        console.log(`图片 ${index + 1} URL构建: 原始=${img.path || img.url}, 最终=${imageUrl}`);
-        
+  const authToken = getToken();
+
+  // 使用实际的样本图片数据，如果没有则返回空数组
+  const imageData = useMemo<SampleImageItem[]>(() => {
+    if (!regionImages || regionImages.length === 0) {
+      return [];
+    }
+
+    return regionImages.map((img, index) => {
+      const rawSource = img.url || img.path || "";
+      let storagePath = img.path || "";
+
+      if (!rawSource) {
+        console.warn(`图片 ${index + 1} 缺少URL或路径`);
         return {
           id: index + 1,
-          url: imageUrl
+          url: "",
+          storagePath,
+          rawPath: rawSource
         };
-      });
-    }
-    // 如果没有上传的图片，返回空数组（而不是模拟数据）
-    return [];
-  }, [sampleImages]);
+      }
+
+      if (!storagePath) {
+        if (rawSource.startsWith(`${API_BASE_URL}/api/images/view/`)) {
+          storagePath = rawSource.replace(`${API_BASE_URL}/api/images/view/`, "");
+        } else if (rawSource.startsWith("/api/images/view/")) {
+          storagePath = rawSource.replace("/api/images/view/", "");
+        } else {
+          storagePath = rawSource;
+        }
+      }
+
+      try {
+        storagePath = decodeURIComponent(storagePath);
+      } catch (error) {
+        console.warn("存储路径解码失败:", { storagePath, error });
+      }
+      storagePath = storagePath.replace(/^\/+/, "");
+
+      let finalUrl = rawSource;
+
+      if (rawSource.startsWith("http://") || rawSource.startsWith("https://")) {
+        finalUrl = rawSource;
+      } else if (rawSource.startsWith("/api/images/view/")) {
+        finalUrl = `${API_BASE_URL}${rawSource}`;
+      } else if (rawSource.startsWith("/")) {
+        finalUrl = `${API_BASE_URL}${rawSource}`;
+      } else {
+        const encodedPath = rawSource
+          .split("/")
+          .map(segment => encodeURIComponent(segment))
+          .join("/");
+        finalUrl = `${API_BASE_URL}/api/images/view/${encodedPath}`;
+      }
+
+      try {
+        const urlObj = new URL(finalUrl);
+        if (authToken && apiBaseUrl && urlObj.origin === apiBaseUrl.origin && !urlObj.searchParams.has("token")) {
+          urlObj.searchParams.set("token", authToken);
+        }
+        finalUrl = urlObj.toString();
+      } catch (error) {
+        console.error("图片URL构建失败:", { rawSource, error });
+      }
+
+      console.log(`图片 ${index + 1} URL构建: 原始=${img.path || img.url}, 最终=${finalUrl}`);
+
+      return {
+        id: index + 1,
+        url: finalUrl,
+        storagePath,
+        rawPath: rawSource
+      };
+    });
+  }, [regionImages, apiBaseUrl, authToken]);
 
   // 加载样本数据（与SampleEdit使用相同的API和逻辑）
   const loadSamples = async () => {
@@ -398,45 +450,114 @@ const ImageAnalysis: React.FC = () => {
   // 加载样本的上传图片
   const loadSampleImages = async (sampleNumber: string) => {
     if (!sampleNumber) {
-      setSampleImages([]);
+      setRegionImages([]);
+      setCellImages([]);
+      setTotalRegionCount(0);
+      setTotalCellCount(0);
       return;
     }
-    
+
     setLoadingImages(true);
     try {
       console.log(`开始加载样本 ${sampleNumber} 的图片...`);
       const imagesResponse = await getSampleImages(sampleNumber);
       console.log(`样本 ${sampleNumber} 的图片API响应:`, imagesResponse);
-      const images = imagesResponse.images || [];
-      
-      // 验证返回的图片是否属于正确的样本
-      const validImages = images.filter(img => {
-        const path = img.path || img.url || '';
-        // 检查路径是否包含正确的样本编号
-        if (path.includes(sampleNumber)) {
-          return true;
+
+      const markedImagesResponse =
+        (imagesResponse as typeof imagesResponse & { marked_images?: ImageInfo[] }).marked_images;
+      const rawMarkedImages = Array.isArray(markedImagesResponse)
+        ? [...markedImagesResponse]
+        : [];
+      const rawRegionImages =
+        imagesResponse.region_images ??
+        imagesResponse.images ??
+        [];
+      const rawCellImages =
+        imagesResponse.cell_images ??
+        [];
+
+      let regionImagesFromApi: ImageInfo[] = [];
+      if (rawMarkedImages.length > 0) {
+        regionImagesFromApi = [...rawMarkedImages];
+      } else if (Array.isArray(rawRegionImages)) {
+        regionImagesFromApi = [...rawRegionImages];
+      }
+      let cellImagesFromApi = Array.isArray(rawCellImages) ? [...rawCellImages] : [];
+
+      if ((!cellImagesFromApi || cellImagesFromApi.length === 0) && regionImagesFromApi.length > 0) {
+        const derivedCellImages: ImageInfo[] = [];
+        const derivedRegionImages: ImageInfo[] = [];
+
+        regionImagesFromApi.forEach(img => {
+          const path = (img.path || img.url || "").replace(/\\/g, "/");
+          if (path.includes("单细胞图")) {
+            derivedCellImages.push(img);
+          } else if (path) {
+            derivedRegionImages.push(img);
+          }
+        });
+
+        if (derivedCellImages.length > 0) {
+          console.info(
+            `从旧版API返回的 ${regionImagesFromApi.length} 张图片中推断出 ${derivedCellImages.length} 张单细胞图像`
+          );
         }
-        console.warn(`图片路径不匹配样本编号: 路径=${path}, 样本编号=${sampleNumber}`);
-        return false;
-      });
-      
-      console.log(`样本 ${sampleNumber}: 总共 ${images.length} 张图片，有效 ${validImages.length} 张`);
-      setSampleImages(validImages);
-      
-      // 如果有图片，重置到第一张
-      if (validImages.length > 0) {
+
+        cellImagesFromApi = derivedCellImages;
+        regionImagesFromApi = derivedRegionImages.length > 0 ? derivedRegionImages : regionImagesFromApi;
+      }
+
+      const sanitizedSampleNumber = sampleNumber.trim();
+      const filterBySample = (items: ImageInfo[]) => {
+        const filtered = items.filter(img => {
+          const path = img.path || img.url || "";
+          if (!path) {
+            return false;
+          }
+          if (!sanitizedSampleNumber) {
+            return true;
+          }
+          if (path.includes(sanitizedSampleNumber)) {
+            return true;
+          }
+          console.warn(`图片路径不匹配样本编号: 路径=${path}, 样本编号=${sanitizedSampleNumber}`);
+          return false;
+        });
+
+        if (filtered.length === 0 && items.length > 0) {
+          console.warn(
+            `筛选后没有图片，但原始列表有 ${items.length} 张，返回未筛选列表作为回退`
+          );
+          return items;
+        }
+
+        return filtered;
+      };
+
+      const validRegionImages = filterBySample(regionImagesFromApi);
+      const validCellImages = filterBySample(cellImagesFromApi);
+
+      setRegionImages(validRegionImages);
+      setCellImages(validCellImages);
+      setTotalRegionCount(regionImagesFromApi.length);
+      setTotalCellCount(cellImagesFromApi.length);
+
+      if (validRegionImages.length > 0) {
         setCurrentImageIndex(0);
-        console.log(`✅ 成功加载 ${validImages.length} 张有效图片`);
+        console.log(`✅ 区域图：共 ${regionImagesFromApi.length} 张，展示 ${validRegionImages.length} 张`);
       } else {
-        console.warn(`⚠️ 样本 ${sampleNumber} 暂无有效的上传图片`);
-        if (images.length > 0) {
-          console.warn(`发现 ${images.length - validImages.length} 张图片路径不匹配`);
-        }
+        console.warn(`⚠️ 样本 ${sampleNumber} 暂无有效区域图`);
+      }
+
+      if (validCellImages.length === 0 && cellImagesFromApi.length > 0) {
+        console.warn(`⚠️ 共有 ${cellImagesFromApi.length} 张单细胞图，但路径不匹配样本编号`);
       }
     } catch (err: any) {
       console.error(`❌ 加载样本 ${sampleNumber} 的图片失败:`, err);
-      setSampleImages([]);
-      // 如果加载失败，不影响其他功能，只是没有图片显示
+      setRegionImages([]);
+      setCellImages([]);
+      setTotalRegionCount(0);
+      setTotalCellCount(0);
     } finally {
       setLoadingImages(false);
     }
@@ -464,11 +585,12 @@ const ImageAnalysis: React.FC = () => {
 
         if (smearResponse.items.length === 0) {
           // 如果没有找到样本，清空细胞数据但不使用示例数据
-          setCellTreeData(cellTree.map(category => ({
-            ...category,
-            count: 0,
-            children: category.children?.map(child => ({ ...child, count: 0, imageCount: 0 })) || []
-          })));
+        setCellTreeData(cellTree.map(category => ({
+          ...category,
+          count: 0,
+          imageCount: 0,
+          children: category.children?.map(child => ({ ...child, count: 0, imageCount: 0 })) || []
+        })));
           setCellClassifications([]);
           console.warn(`未找到样本 ${selectedSample.sampleNumber} 的细胞分类数据`);
           return;
@@ -501,17 +623,17 @@ const ImageAnalysis: React.FC = () => {
             has_path: !!c.storage_path
           }))
         });
-        setCellClassifications(cells);
+      setCellClassifications(cells);
 
-        // 根据实际数据更新cellTree
-        const updatedTree = updateCellTreeWithRealData(cellTree, cells);
-        setCellTreeData(updatedTree);
-      } catch (err: any) {
+      const updatedTree = updateCellTreeWithRealData(cellTree, cells);
+      setCellTreeData(updatedTree);
+    } catch (err: any) {
         console.error('加载细胞分类数据失败:', err);
         // 如果加载失败，清空细胞数据（不使用示例数据）
         setCellTreeData(cellTree.map(category => ({
           ...category,
           count: 0,
+          imageCount: 0,
           children: category.children?.map(child => ({ ...child, count: 0, imageCount: 0 })) || []
         })));
         setCellClassifications([]);
@@ -524,33 +646,44 @@ const ImageAnalysis: React.FC = () => {
   }, [selectedSampleId, samples]);
 
   // 根据实际细胞分类数据更新cellTree
-  const updateCellTreeWithRealData = (tree: CellNode[], cells: CellClassification[]): CellNode[] => {
-    return tree.map(category => {
-      const updatedCategory = { ...category };
-      
-      if (category.children) {
-        updatedCategory.children = category.children.map(child => {
-          // 统计该类型细胞的数量
-          const cellType = child.name;
-          const count = cells.filter(cell => 
-            cell.model_classification_type === cellType || 
-            cell.doctor_classification_category === cellType
-          ).length;
-          
-          return {
-            ...child,
-            count: count > 0 ? count : child.count, // 如果有真实数据就用真实数据，否则保持原值
-            imageCount: count > 0 ? count : 0
-          };
-        });
-        
-        // 更新分类的总数
-        const totalCount = updatedCategory.children.reduce((sum, child) => sum + child.count, 0);
-        updatedCategory.count = totalCount > 0 ? totalCount : category.count;
+  const updateCellTreeWithRealData = (
+    tree: CellNode[],
+    cells: CellClassification[]
+  ): CellNode[] => {
+    const countsMap = new Map<string, number>();
+
+    cells.forEach(cell => {
+      const doctorType = (cell.doctor_classification_category || "").trim();
+      const modelType = (cell.model_classification_type || "").trim();
+      const effectiveType = doctorType || modelType;
+      if (effectiveType) {
+        const previous = countsMap.get(effectiveType) ?? 0;
+        countsMap.set(effectiveType, previous + 1);
       }
-      
-      return updatedCategory;
     });
+
+    const buildNode = (node: CellNode): CellNode => {
+      const clonedNode: CellNode = {
+        ...node,
+        children: node.children ? node.children.map(buildNode) : undefined
+      };
+
+      const ownCount = countsMap.get(node.name) ?? 0;
+      const childrenTotal = clonedNode.children?.reduce(
+        (sum, child) => sum + (child.imageCount ?? child.count ?? 0),
+        0
+      ) ?? 0;
+
+      const total = ownCount + childrenTotal;
+
+      clonedNode.count = total;
+      clonedNode.imageCount = total;
+      clonedNode.count = total;
+
+      return clonedNode;
+    };
+
+    return tree.map(buildNode);
   };
 
   // 根据选中的细胞类型生成标注
@@ -644,26 +777,25 @@ const ImageAnalysis: React.FC = () => {
   };
 
   const renderImages = (group: CellNode) => {
-    const total = group.imageCount ?? group.count;
-    if (!total) {
+    const groupName = (group.name || "").trim();
+    const cellsForType = cellClassifications.filter(cell => {
+      const doctorType = (cell.doctor_classification_category || "").trim();
+      const modelType = (cell.model_classification_type || "").trim();
+      const effectiveType = doctorType || modelType;
+      return effectiveType === groupName;
+    });
+
+    const total = cellsForType.length;
+
+    if (total === 0) {
       return <div className="empty-state">暂无图像</div>;
     }
 
-    // 获取该类型对应的实际细胞图像
-    const cellsForType = cellClassifications.filter(cell => {
-      const modelType = cell.model_classification_type || '';
-      const doctorType = cell.doctor_classification_category || '';
-      const groupName = group.name || '';
-      
-      // 精确匹配或包含匹配
-      return modelType === groupName || 
-             doctorType === groupName ||
-             modelType.includes(groupName) ||
-             groupName.includes(modelType);
-    });
-    
-    console.log(`类型 "${group.name}" 匹配到 ${cellsForType.length} 个细胞`, {
-      groupName: group.name,
+    const visibleCount = Math.min(total, MAX_IMAGES);
+    const cellsToShow = cellsForType.slice(0, visibleCount);
+
+    console.log(`类型 "${groupName}" 匹配到 ${total} 个细胞`, {
+      groupName,
       totalCells: cellClassifications.length,
       matchedCells: cellsForType.map(c => ({
         cell_number: c.cell_number,
@@ -672,97 +804,126 @@ const ImageAnalysis: React.FC = () => {
       }))
     });
 
-    const visible = Math.min(total, MAX_IMAGES);
-    const cellsToShow = cellsForType.slice(0, visible);
-
     return (
       <>
-        {total > visible && (
-          <p className="gallery-note">展示 {visible} 张，共 {total} 张</p>
+        {total > visibleCount && (
+          <p className="gallery-note">展示 {visibleCount} 张，共 {total} 张</p>
         )}
         <div className="thumb-grid">
-                {cellsToShow.length > 0 ? (
-            cellsToShow.map((cell, index) => {
-              // 构建图片URL，添加时间戳避免缓存问题（如果需要）
-              // 确保storage_path包含正确的样本编号
-              let imageUrl = null;
-              if (cell.storage_path) {
-                // 验证storage_path是否属于当前样本
-                const currentSampleNumber = selectedSample?.sampleNumber || '';
-                if (currentSampleNumber && cell.storage_path.includes(currentSampleNumber)) {
-                  // 对路径的每个段进行编码
-                  const encodedPath = cell.storage_path.split('/').map(segment => encodeURIComponent(segment)).join('/');
-                  imageUrl = `${API_BASE_URL}/api/images/view/${encodedPath}`;
-                } else {
-                  console.warn(`细胞 ${cell.cell_number} 的storage_path不匹配当前样本: path=${cell.storage_path}, 样本=${currentSampleNumber}`);
+          {cellsToShow.map((cell, index) => {
+            const currentSampleNumber = selectedSample?.sampleNumber || "";
+            let imageUrl: string | null = null;
+
+            if (cell.storage_path) {
+              const normalizedPath = cell.storage_path.replace(/^\/+/, "");
+              if (!currentSampleNumber || normalizedPath.includes(currentSampleNumber)) {
+                const encodedPath = normalizedPath
+                  .split("/")
+                  .map(segment => encodeURIComponent(segment))
+                  .join("/");
+                let candidateUrl = `${API_BASE_URL}/api/images/view/${encodedPath}`;
+
+                if (authToken && apiBaseUrl) {
+                  try {
+                    const urlObj = new URL(candidateUrl);
+                    if (urlObj.origin === apiBaseUrl.origin && !urlObj.searchParams.has("token")) {
+                      urlObj.searchParams.set("token", authToken);
+                    }
+                    candidateUrl = urlObj.toString();
+                  } catch (error) {
+                    console.error("细胞图像URL构建失败:", { storagePath: cell.storage_path, error });
+                  }
                 }
+
+                imageUrl = candidateUrl;
+              } else {
+                console.warn(`细胞 ${cell.cell_number} 的storage_path不匹配当前样本: path=${cell.storage_path}, 样本=${currentSampleNumber}`);
               }
-              
-              return (
-              <div key={`${group.id}-${cell.cell_number || cell.id || index}-${index}`} className="cell-thumb">
+            }
+
+            const canPreview = Boolean(imageUrl);
+            const handlePreview = () => {
+              if (!imageUrl) return;
+              const infoParts = [
+                cell.cell_number ? `细胞编号：${cell.cell_number}` : null,
+                cell.width && cell.height ? `尺寸：${cell.width}×${cell.height}` : null
+              ].filter(Boolean);
+
+              setPreviewImage({
+                url: imageUrl,
+                title: groupName,
+                description: infoParts.join(" ｜ "),
+                cell
+              });
+            };
+
+            return (
+              <div
+                key={`${group.id}-${cell.cell_number || cell.id || index}-${index}`}
+                className={`cell-thumb ${canPreview ? "clickable" : ""}`}
+                onClick={canPreview ? handlePreview : undefined}
+                onKeyDown={canPreview ? (event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handlePreview();
+                  }
+                } : undefined}
+                role={canPreview ? "button" : undefined}
+                tabIndex={canPreview ? 0 : -1}
+              >
                 {imageUrl ? (
-                  <img 
+                  <img
                     src={imageUrl}
-                    alt={`${group.name} - ${cell.cell_number}`}
+                    alt={`${groupName} - ${cell.cell_number || index + 1}`}
                     className="cell-thumb-art"
-                    loading="lazy"  // 懒加载
-                    decoding="async"  // 异步解码
-                    style={{ 
-                      objectFit: 'cover',
-                      width: '100%',
-                      height: '100%'
-                    }}
-                    onLoad={() => {
-                      // 静默加载，不输出日志（减少控制台输出）
+                    loading="lazy"
+                    decoding="async"
+                    style={{
+                      objectFit: "cover",
+                      width: "100%",
+                      height: "100%"
                     }}
                     onError={(e) => {
-                      // 如果图片加载失败，显示占位符
                       const target = e.target as HTMLImageElement;
                       if (target && target.parentElement) {
-                        target.style.display = 'none';
-                        // 检查是否已经有占位符
-                        if (!target.parentElement.querySelector('.cell-thumb-placeholder')) {
-                          const placeholder = document.createElement('div');
-                          placeholder.className = 'cell-thumb-art cell-thumb-placeholder';
-                          placeholder.style.background = '#f0f0f0';
-                          placeholder.style.display = 'flex';
-                          placeholder.style.alignItems = 'center';
-                          placeholder.style.justifyContent = 'center';
-                          placeholder.style.color = '#999';
-                          placeholder.style.fontSize = '12px';
-                          placeholder.textContent = '加载失败';
+                        target.style.display = "none";
+                        if (!target.parentElement.querySelector(".cell-thumb-placeholder")) {
+                          const placeholder = document.createElement("div");
+                          placeholder.className = "cell-thumb-art cell-thumb-placeholder";
+                          placeholder.style.background = "#f0f0f0";
+                          placeholder.style.display = "flex";
+                          placeholder.style.alignItems = "center";
+                          placeholder.style.justifyContent = "center";
+                          placeholder.style.color = "#999";
+                          placeholder.style.fontSize = "12px";
+                          placeholder.textContent = "加载失败";
                           target.parentElement.appendChild(placeholder);
                         }
                       }
                     }}
                   />
                 ) : (
-                  <div className="cell-thumb-art" style={{ 
-                    background: '#f0f0f0', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    color: '#999',
-                    fontSize: '12px'
-                  }}>
+                  <div
+                    className="cell-thumb-art"
+                    style={{
+                      background: "#f0f0f0",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#999",
+                      fontSize: "12px"
+                    }}
+                  >
                     无路径
                   </div>
                 )}
                 <span className="cell-thumb-label">
-                  {cell.width && cell.height ? `${cell.width}×${cell.height}` : '193×192'}
-                  {cell.cell_number && <div style={{ fontSize: '10px', color: '#999' }}>{cell.cell_number}</div>}
+                  {cell.width && cell.height ? `${cell.width}×${cell.height}` : "193×192"}
+                  {cell.cell_number && <div style={{ fontSize: "10px", color: "#999" }}>{cell.cell_number}</div>}
                 </span>
               </div>
-            )})
-          ) : (
-            // 如果没有实际图像数据，显示占位符
-            Array.from({ length: visible }, (_, index) => (
-              <div key={`${group.id}-placeholder-${index}`} className="cell-thumb">
-                <div className="cell-thumb-art" />
-                <span className="cell-thumb-label">193×192</span>
-              </div>
-            ))
-          )}
+            );
+          })}
         </div>
       </>
     );
@@ -770,12 +931,73 @@ const ImageAnalysis: React.FC = () => {
 
   const selectedSample = samples.find(sample => sample.id === selectedSampleId);
 
+  const handleDeleteCurrentImage = async () => {
+    if (isDeletingImage) {
+      return;
+    }
+
+    if (!selectedSample) {
+      window.alert("请先选择样本");
+      return;
+    }
+
+    if (imageData.length === 0 || currentImageIndex < 0) {
+      window.alert("当前没有可删除的图片");
+      return;
+    }
+
+    const currentImage = imageData[currentImageIndex];
+
+    let storagePath =
+      currentImage?.storagePath ||
+      currentImage?.rawPath ||
+      "";
+
+    if (!storagePath) {
+      window.alert("当前图片缺少有效路径，无法删除");
+      return;
+    }
+
+    if (storagePath.startsWith(`${API_BASE_URL}/api/images/view/`)) {
+      storagePath = storagePath.replace(`${API_BASE_URL}/api/images/view/`, "");
+    } else if (storagePath.startsWith("/api/images/view/")) {
+      storagePath = storagePath.replace("/api/images/view/", "");
+    }
+
+    storagePath = storagePath.replace(/^\/+/, "");
+
+    if (!storagePath) {
+      window.alert("当前图片缺少有效路径，无法删除");
+      return;
+    }
+
+    if (!window.confirm("确定要删除当前图片吗？删除后无法恢复。")) {
+      return;
+    }
+
+    try {
+      setIsDeletingImage(true);
+      setPreviewImage(null);
+      await deleteSampleImage(storagePath);
+      await loadSampleImages(selectedSample.sampleNumber);
+      setCurrentImageIndex(0);
+      window.alert("图片已删除");
+      console.info(`图片已删除: ${storagePath}`);
+    } catch (error: any) {
+      console.error("删除图片失败:", error);
+      window.alert(error?.message ?? "删除图片失败");
+    } finally {
+      setIsDeletingImage(false);
+    }
+  };
+
   // 翻页逻辑
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
-    <div className="image-analysis">
-      <div className="analysis-container">
+    <>
+      <div className="image-analysis">
+        <div className="analysis-container">
         <aside className="sample-column">
           <div className="sample-column-header">
             <h2>样本列表</h2>
@@ -924,26 +1146,28 @@ const ImageAnalysis: React.FC = () => {
                 <h3>标记项目</h3>
               </div>
               
-              <div className="header-tabs">
-                <button 
-                  className={`header-tab ${activeTab === "细胞图像" ? "active" : ""}`}
-                  onClick={() => setActiveTab("细胞图像")}
-                >
-                  细胞图像
-                </button>
-                <button 
-                  className={`header-tab ${activeTab === "标记图像" ? "active" : ""}`}
-                  onClick={() => setActiveTab("标记图像")}
-                >
-                  标记图像
-                </button>
-                <button 
-                  className={`header-tab ${activeTab === "区域图像" ? "active" : ""}`}
-                  onClick={() => setActiveTab("区域图像")}
-                >
-                  区域图像
-                </button>
-              </div>
+            <div className="header-tabs">
+              <button 
+                className={`header-tab ${activeTab === "细胞图像" ? "active" : ""}`}
+                onClick={() => setActiveTab("细胞图像")}
+              >
+                细胞图像
+              </button>
+              <span className="tab-counter">{cellImages.length}</span>
+              <button 
+                className={`header-tab ${activeTab === "标记图像" ? "active" : ""}`}
+                onClick={() => setActiveTab("标记图像")}
+              >
+                标记图像
+              </button>
+              <span className="tab-counter">{regionImages.length}</span>
+              <button 
+                className={`header-tab ${activeTab === "区域图像" ? "active" : ""}`}
+                onClick={() => setActiveTab("区域图像")}
+              >
+                区域图像
+              </button>
+            </div>
             </div>
             
             <div className="header-divider"></div>
@@ -975,7 +1199,27 @@ const ImageAnalysis: React.FC = () => {
               </div>
             </div>
             
-            <button className="header-query-btn">查询</button>
+            <button
+              className="header-query-btn"
+              disabled={!isReviewReady}
+              style={{
+                opacity: isReviewReady ? 1 : 0.7,
+                cursor: isReviewReady ? 'pointer' : 'not-allowed',
+                background: isReviewReady
+                  ? 'linear-gradient(135deg, #34d399, #10b981)'
+                  : undefined,
+                color: isReviewReady ? '#053b2e' : undefined,
+                borderColor: isReviewReady ? '#34d399' : undefined,
+                boxShadow: isReviewReady
+                  ? '0 8px 18px rgba(16,185,129,0.28)'
+                  : undefined
+              }}
+              onClick={() => {
+                setIsReviewReady(false);
+              }}
+            >
+              完成审核
+            </button>
           </div>
 
           <div className="right-content">
@@ -1173,6 +1417,15 @@ const ImageAnalysis: React.FC = () => {
                       <button className="control-btn" onClick={handleZoomIn} title="放大">
                         <span>🔍+</span>
                       </button>
+                      <button
+                        className="control-btn"
+                        title={isDeletingImage ? "正在删除..." : "删除当前图片"}
+                        onClick={handleDeleteCurrentImage}
+                        disabled={isDeletingImage || imageData.length === 0}
+                        aria-label="删除当前图片"
+                      >
+                        <span>{isDeletingImage ? "⏳" : "🗑️"}</span>
+                      </button>
                       <button className="control-btn" title="全屏">
                         <span>⛶</span>
                       </button>
@@ -1256,17 +1509,9 @@ const ImageAnalysis: React.FC = () => {
                   <div className="detail-header">
                     <div className="detail-title">
                       <h1>{selectedNode?.name ?? "请选择细胞分类"}</h1>
-                      <p>细胞总数：{selectedNode?.count ?? 0}</p>
+                      <p>细胞总数：{selectedNode?.imageCount ?? selectedNode?.count ?? 0}</p>
                     </div>
-                    <div className="detail-actions">
-                      <div className="detail-tags">
-                        <span className="detail-tag">姓名：{selectedSample?.patientName ?? "-"}</span>
-                        <span className="detail-tag">编号：{selectedSample?.sampleNumber ?? "-"}</span>
-                        <span className="detail-tag">性别：{selectedSample?.patientGender ?? "-"}</span>
-                        <span className="detail-tag">年龄：{selectedSample?.patientAge ? `${selectedSample.patientAge}岁` : "-"}</span>
-                        <span className="detail-tag">色彩模式：{colorMode}</span>
-                      </div>
-                    </div>
+                    <div className="detail-actions"></div>
                   </div>
 
                   <div className="detail-body">
@@ -1274,7 +1519,7 @@ const ImageAnalysis: React.FC = () => {
                       <section key={group.id} className="detail-section">
                         <header className="section-heading">
                           <h3>{group.name}</h3>
-                          <span className="section-count">{group.count}</span>
+                          <span className="section-count">{group.imageCount ?? group.count ?? 0}</span>
                         </header>
                         {renderImages(group)}
                       </section>
@@ -1285,8 +1530,137 @@ const ImageAnalysis: React.FC = () => {
             </main>
           </div>
         </div>
+        </div>
       </div>
-    </div>
+
+      {previewImage && (
+        <div
+          className="image-preview-modal-overlay"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="image-preview-modal"
+            onClick={event => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-close-btn"
+              onClick={() => setPreviewImage(null)}
+              aria-label="关闭预览"
+            >
+              ×
+            </button>
+            <div className="image-preview-content">
+              <img
+                src={previewImage.url}
+                alt={previewImage.title ?? "细胞图像"}
+              />
+            </div>
+            {(previewImage.title || previewImage.description) && (
+              <div className="image-preview-footer">
+                {previewImage.title && <h4>{previewImage.title}</h4>}
+                {previewImage.description && <p>{previewImage.description}</p>}
+                <div style={{ marginTop: 12 }}>
+                  <button
+                    type="button"
+                    className="action-btn"
+                    onClick={() => {
+                      // 预填选项
+                      const defaultMajor = cellTree[0]?.name || "";
+                      setSelectedMajor(defaultMajor);
+                      const defaultSub = cellTree[0]?.children?.[0]?.name || "";
+                      setSelectedSub(defaultSub);
+                      setShowClassifyEditor(true);
+                    }}
+                  >
+                    修改细胞分类
+                  </button>
+                </div>
+                {showClassifyEditor && previewImage?.cell && (
+                  <div style={{ marginTop: 14, borderTop: '1px dashed #e5e7eb', paddingTop: 14 }}>
+                    <div style={{ display: 'flex', gap: 16 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', marginBottom: 8, color: '#4b5563', fontWeight: 600 }}>细胞系</label>
+                        <select
+                          value={selectedMajor}
+                          onChange={(e) => {
+                            const major = e.target.value;
+                            setSelectedMajor(major);
+                            const firstSub = cellTree.find(c => c.name === major)?.children?.[0]?.name || "";
+                            setSelectedSub(firstSub);
+                          }}
+                          style={{ width: '100%', height: 40, borderRadius: 10, padding: '0 10px', border: '1px solid #d1d5db' }}
+                        >
+                          {cellTree.map(cat => (
+                            <option key={cat.id} value={cat.name}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', marginBottom: 8, color: '#4b5563', fontWeight: 600 }}>细胞亚型</label>
+                        <select
+                          value={selectedSub}
+                          onChange={(e) => setSelectedSub(e.target.value)}
+                          style={{ width: '100%', height: 40, borderRadius: 10, padding: '0 10px', border: '1px solid #d1d5db' }}
+                        >
+                          {cellTree.find(c => c.name === selectedMajor)?.children?.map(sub => (
+                            <option key={sub.id} value={sub.name}>{sub.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
+                      <button
+                        type="button"
+                        className="action-btn"
+                        onClick={() => setShowClassifyEditor(false)}
+                        style={{ height: 40, padding: '0 16px', borderRadius: 10, fontWeight: 600 }}
+                      >
+                        放弃修改
+                      </button>
+                      <button
+                        type="button"
+                        className="action-btn primary"
+                        onClick={async () => {
+                          try {
+                            const cellNumber = previewImage?.cell?.cell_number;
+                            if (cellNumber) {
+                              await updateCellClassificationByNumber(cellNumber, {
+                                doctor_classification_category: selectedSub,
+                                major_category: selectedMajor,
+                                sub_category: selectedSub
+                              });
+                            }
+                            setIsReviewReady(true);
+                            setShowClassifyEditor(false);
+                            // 同步前端树计数：刷新分类数据
+                            if (selectedSampleId) {
+                              const sample = samples.find(s => s.id === selectedSampleId);
+                              if (sample) {
+                                const cells = await getCellClassificationsBySampleNumber(sample.sampleNumber);
+                                setCellClassifications(cells);
+                                const updatedTree = updateCellTreeWithRealData(cellTree, cells);
+                                setCellTreeData(updatedTree);
+                              }
+                            }
+                            alert('细胞分类已更新');
+                          } catch (err: any) {
+                            alert(err.message || '更新失败');
+                          }
+                        }}
+                        style={{ height: 40, padding: '0 18px', borderRadius: 10, fontWeight: 700 }}
+                      >
+                        确认修改
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

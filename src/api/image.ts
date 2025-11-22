@@ -23,8 +23,13 @@ export interface ImageInfo {
 
 export interface SampleImagesResponse {
   sample_number: string;
-  image_count: number;
-  images: ImageInfo[];
+  total_images: number;
+  region_images: ImageInfo[];
+  cell_images: ImageInfo[];
+  image_count?: number;
+  images?: ImageInfo[];
+  user_id?: number;
+  user_role?: string;
 }
 
 // 批量上传图片
@@ -121,3 +126,30 @@ export const processSamplePipeline = async (
   return response.json();
 };
 
+
+export const deleteSampleImage = async (storagePath: string): Promise<void> => {
+  if (!storagePath) {
+    throw new Error("无效的图片路径");
+  }
+
+  const encodedPath = storagePath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  const response = await fetch(`${API_BASE_URL}/api/images/view/${encodedPath}`, {
+    method: "DELETE",
+    headers: getUploadHeaders(),
+  });
+
+  if (!response.ok) {
+    let errorDetail = "删除图片失败";
+    try {
+      const error = await response.json();
+      errorDetail = error.detail || errorDetail;
+    } catch (err) {
+      // ignore parse errors
+    }
+    throw new Error(errorDetail);
+  }
+};

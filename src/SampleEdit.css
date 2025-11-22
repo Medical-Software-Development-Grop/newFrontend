@@ -67,7 +67,7 @@
 .form-label {
   font-size: 13px;
   color: var(--text-sub);
-  font-weight: 500;
+  font-weight: 700; /* 筛选项标题加黑 */
 }
 .form-grid {
   display: grid;
@@ -113,6 +113,27 @@
   gap: 8px;
   min-width: 0;
 }
+.search-filter-form .form-group {
+  flex-direction: row;            /* 使标签与输入框水平排列 */
+  align-items: center;
+  gap: 10px;
+}
+.search-filter-form .form-label {
+  flex: 0 0 80px;                 /* 固定标签宽度，右对齐更整齐 */
+  text-align: right;
+}
+.search-filter-form .form-group > input,
+.search-filter-form .form-group > select,
+.search-filter-form .form-group > .date-range {
+  flex: 1 1 auto;                 /* 输入区占满剩余空间 */
+  min-width: 0;
+}
+.search-filter-form .date-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
 .form-group.date-range-group {
   grid-column: span 2;
 }
@@ -130,6 +151,18 @@
   padding: 0 12px;
   box-sizing: border-box;
   background: #fff;
+}
+.form-grid input[type="date"]::placeholder {
+  color: #9ca3af; /* 请选择日期 - 淡灰色 */
+}
+.form-grid input[type="date"][value=""] {
+  color: #9ca3af;
+}
+.form-grid input[type="date"][value=""]::-webkit-datetime-edit {
+  color: #9ca3af;
+}
+.form-grid select.placeholder {
+  color: #9ca3af; /* “请选择” - 淡灰色 */
 }
 .date-gap {
   color: var(--text-sub);
@@ -282,55 +315,41 @@
   font-size: 13px;
 }
 
-.data-table thead th:first-child,
-.data-table tbody td:first-child {
-  width: 5%;
-  min-width: 48px;
-  text-align: center;
+.data-table thead th:nth-child(1),
+.data-table tbody td:nth-child(1) {
+  width: 18%;
 }
 .data-table thead th:nth-child(2),
 .data-table tbody td:nth-child(2) {
-  width: 16%;
+  width: 12%;
 }
-
 .data-table thead th:nth-child(3),
 .data-table tbody td:nth-child(3) {
   width: 10%;
 }
-
 .data-table thead th:nth-child(4),
 .data-table tbody td:nth-child(4) {
-  width: 10%;
+  width: 12%;
 }
-
 .data-table thead th:nth-child(5),
 .data-table tbody td:nth-child(5) {
   width: 12%;
 }
-
 .data-table thead th:nth-child(6),
 .data-table tbody td:nth-child(6) {
-  width: 12%;
+  width: 16%;
 }
-
 .data-table thead th:nth-child(7),
 .data-table tbody td:nth-child(7) {
-  width: 13%;
+  width: 12%;
 }
-
 .data-table thead th:nth-child(8),
 .data-table tbody td:nth-child(8) {
   width: 10%;
 }
-
 .data-table thead th:nth-child(9),
 .data-table tbody td:nth-child(9) {
-  width: 6%;
-}
-
-.data-table thead th:nth-child(10),
-.data-table tbody td:nth-child(10) {
-  width: 6%;
+  width: 8%;
 }
 
 .data-table thead th {
@@ -354,6 +373,9 @@
 .data-table tbody tr {
   background: #ffffff;
   transition: background-color 0.2s ease;
+}
+.data-table tbody tr.selected {
+  background: #e9efff;
 }
 .data-table tbody td {
   padding: 12px;

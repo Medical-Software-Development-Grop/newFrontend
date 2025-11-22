@@ -281,62 +281,7 @@ const ScanManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Batch Upload */}
-              <div className="batch-upload-section">
-                <div className="batch-title">批量上传病人信息</div>
-                
-                <div className="upload-controls">
-                  <input
-                    type="file"
-                    ref={patientFileInputRef}
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFileSelect(e, 'patient')}
-                    multiple
-                  />
-                  <button 
-                    className="upload-button"
-                    onClick={() => patientFileInputRef.current?.click()}
-                  >
-                    选择文件
-                  </button>
-                  <div className="upload-tips">
-                    支持批量上传文件，文件格式不限，最多只能上传 5 份文件
-                  </div>
-                </div>
-
-                <div className="file-table">
-                  <div className="table-header">
-                    <div className="header-cell">文件名</div>
-                    <div className="header-cell">大小</div>
-                    <div className="header-cell">状态</div>
-                    <div className="header-cell">操作</div>
-                  </div>
-                  
-                  <div className="file-dragger">
-                    <div className="dragger-text">
-                      {patientFiles.length > 0 
-                        ? `已选择 ${patientFiles.length} 个文件` 
-                        : '点击上方"选择文件"或将文件拖拽到此区域'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="button-group">
-                  <button 
-                    className="cancel-button"
-                    onClick={() => setPatientFiles([])}
-                  >
-                    取消上传
-                  </button>
-                  <button 
-                    className="upload-submit-button" 
-                    disabled={patientFiles.length === 0}
-                    onClick={() => handleUpload('patient')}
-                  >
-                    点击上传
-                  </button>
-                </div>
-              </div>
+              {/* 批量上传（移除） */}
             </div>
 
             {/* 图片上传 - Right Column */}
@@ -383,54 +328,7 @@ const ScanManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Batch Image Upload */}
-              <div className="batch-upload-section">
-                <div className="batch-title">批量上传图片</div>
-                
-                <div className="upload-controls">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    style={{ display: 'none' }}
-                    accept="image/*"
-                    onChange={(e) => handleFileSelect(e, 'image')}
-                    multiple
-                  />
-                  <button 
-                    className="upload-button"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    选择文件
-                  </button>
-                  <div className="upload-tips">
-                    支持批量上传文件，文件格式不限，最多只能上传 5 份文件
-                  </div>
-                </div>
-
-                <div className="file-dragger">
-                  <div className="dragger-text">
-                    {uploadedFiles.length > 0 
-                      ? `已选择 ${uploadedFiles.length} 张图片` 
-                      : '点击上方"选择文件"或将文件拖拽到此区域'}
-                  </div>
-                </div>
-
-                <div className="button-group">
-                  <button 
-                    className="cancel-button"
-                    onClick={() => setUploadedFiles([])}
-                  >
-                    取消上传
-                  </button>
-                  <button 
-                    className="upload-submit-button" 
-                    disabled={uploadedFiles.length === 0 || !sampleNumber}
-                    onClick={() => handleUpload('image')}
-                  >
-                    点击上传
-                  </button>
-                </div>
-              </div>
+              {/* 批量上传（移除） */}
             </div>
           </div>
 

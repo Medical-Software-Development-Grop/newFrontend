@@ -501,14 +501,11 @@ const ReportAnalysis: React.FC = () => {
           <section className="cell-section-grid">
             {cellSections.map(section => (
               <div key={section.id} className="cell-card">
-                <header className="cell-card-header">
-                  <h3>{section.title}</h3>
-                </header>
                 <div className="cell-table-wrapper">
                   <table className="cell-table">
                     <thead>
                       <tr>
-                        <th></th>
+                        <th className="cell-section-title">{section.title}</th>
                         <th>数量</th>
                         <th>百分比</th>
                         <th>参考值</th>
@@ -532,7 +529,7 @@ const ReportAnalysis: React.FC = () => {
             ))}
           </section>
 
-          <div className="report-footer-note">定位相机初始化失败</div>
+          {/* 底部提示仅在需要时显示；默认隐藏以避免误导 */}
         </main>
 
         <aside className="report-sidebar">

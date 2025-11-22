@@ -1,11 +1,11 @@
 .App {
-  text-align: center;
+  text-align: left; /* 避免全局居中影响各业务页面布局 */
 }
 
 .App-header {
-  background-color: #282c34;
+  background: linear-gradient(180deg, #f7faff 0%, #f2f5fc 100%);
   padding: 20px;
-  color: white;
+  color: #0f172a;
   min-height: 100vh;
 }
 
