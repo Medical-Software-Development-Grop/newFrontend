@@ -10,6 +10,7 @@ export interface Checklist {
   review_status: string;
   marking_status: string;
   report_date?: string;
+  cell_counts?: Record<string, number>; // 细胞计数信息
 }
 
 export interface ChecklistListResponse {
@@ -123,5 +124,20 @@ export const reviewChecklist = async (
     const error = await response.json();
     throw new Error(error.detail || '审核失败');
   }
+};
+
+// 根据样本编号获取检查单（包含 cell_counts 字段）
+export const getChecklistBySampleNumber = async (sampleNumber: string): Promise<Checklist> => {
+  const response = await fetch(`${API_BASE_URL}/api/checklists/sample/${encodeURIComponent(sampleNumber)}`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || '获取检查单失败');
+  }
+
+  return response.json();
 };
 

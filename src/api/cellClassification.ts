@@ -12,6 +12,7 @@ export interface CellClassification {
   model_classification_confidence?: number;
   doctor_classification_category?: string;
   storage_path?: string;
+  image_url?: string; // 细胞图像 URL
 }
 
 export interface CellStatistics {
@@ -97,6 +98,41 @@ export const updateCellClassificationByNumber = async (
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(err.detail || '更新细胞分类失败');
+  }
+
+  return response.json();
+};
+
+// 获取细胞图像（根据细胞编号）
+export const getCellImage = async (cellNumber: string): Promise<Blob> => {
+  const response = await fetch(`${API_BASE_URL}/api/cell-classifications/${encodeURIComponent(cellNumber)}/image`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: '获取细胞图像失败' }));
+    throw new Error(error.detail || '获取细胞图像失败');
+  }
+
+  return response.blob();
+};
+
+// 获取细胞图像 URL（返回 URL 字符串而不是 Blob）
+export const getCellImageUrl = (cellNumber: string): string => {
+  return `${API_BASE_URL}/api/cell-classifications/${encodeURIComponent(cellNumber)}/image`;
+};
+
+// 根据样本编号获取所有细胞信息（包含 image_url）
+export const getCellsBySampleNumber = async (sampleNumber: string): Promise<CellClassification[]> => {
+  const response = await fetch(`${API_BASE_URL}/api/cell-classifications/sample/${encodeURIComponent(sampleNumber)}/cells`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || '获取细胞信息失败');
   }
 
   return response.json();

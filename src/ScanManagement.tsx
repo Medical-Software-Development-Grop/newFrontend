@@ -1,8 +1,9 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import "./ScanManagement.css";
-import { uploadImages, batchInfer, processSamplePipeline } from "./api/image";
+import { uploadImages, processSamplePipeline } from "./api/image";
 import { getSmears } from "./api/smear";
-import { API_BASE_URL, getUploadHeaders } from "./api/config";
+import { API_BASE_URL, getUploadHeaders, getToken } from "./api/config";
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 interface TableData {
   id: number;
@@ -26,6 +27,17 @@ const ScanManagement: React.FC = () => {
   const [selectedRowIndex, setSelectedRowIndex] = useState<number>(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [currentSamples, setCurrentSamples] = useState<number>(0);
+  const [totalSamples, setTotalSamples] = useState<number>(0);
+  const [analysisResults, setAnalysisResults] = useState<Array<{
+    sample_number: string;
+    success: boolean;
+    total_cells?: number;
+    checklist_number?: string;
+    error?: string;
+  }>>([]);
+  const [currentSampleNumber, setCurrentSampleNumber] = useState<string>("");
+  const [analysisMessage, setAnalysisMessage] = useState<string>("");
 
   const tableData: TableData[] = [
     {
@@ -115,13 +127,36 @@ const ScanManagement: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const patientFileInputRef = useRef<HTMLInputElement>(null);
   const [sampleNumber, setSampleNumber] = useState<string>("");
+  // 跟踪上传完成状态
+  const [patientUploaded, setPatientUploaded] = useState<boolean>(false);
+  const [imageUploaded, setImageUploaded] = useState<boolean>(false);
+  // SSE 控制器引用（用于取消连接）
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 组件卸载时清理 SSE 连接
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'patient') => {
     const files = Array.from(event.target.files || []);
     if (type === 'image') {
       setUploadedFiles(files);
+      // 选择新文件时重置上传状态
+      if (files.length > 0) {
+        setImageUploaded(false);
+      }
     } else {
       setPatientFiles(files);
+      // 选择新文件时重置上传状态
+      if (files.length > 0) {
+        setPatientUploaded(false);
+      }
     }
   };
 
@@ -141,6 +176,7 @@ const ScanManagement: React.FC = () => {
         await uploadImages(sampleNumber, files);
         alert('上传成功');
         setUploadedFiles([]);
+        setImageUploaded(true); // 标记图片已上传完成
         
         // 触发自定义事件，通知其他界面刷新数据
         window.dispatchEvent(new CustomEvent('imageUploadSuccess', { 
@@ -187,6 +223,7 @@ const ScanManagement: React.FC = () => {
         
         alert(message);
         setPatientFiles([]);
+        setPatientUploaded(true); // 标记病人信息已上传完成
         
         // 如果存在错误，在控制台显示
         if (result.errors && result.errors.length > 0) {
@@ -206,46 +243,153 @@ const ScanManagement: React.FC = () => {
   const handleAnalysis = async () => {
     if (isAnalyzing) return;
     
-    if (uploadedFiles.length === 0) {
-      alert('请先上传图片');
+    // 检查是否都已上传完成
+    if (!patientUploaded || !imageUploaded) {
+      alert('请先完成表格和图片的上传');
       return;
     }
     
     setIsAnalyzing(true);
     setAnalysisProgress(0);
+    setCurrentSamples(0);
+    setTotalSamples(0);
+    setAnalysisResults([]);
+    setCurrentSampleNumber("");
+    setAnalysisMessage("");
+    
+    // 清除之前的 SSE 连接（如果存在）
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    // 创建新的 AbortController
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     
     try {
-      // 模拟分析进度
-      const progressInterval = setInterval(() => {
-        setAnalysisProgress(prev => {
-          const increment = Math.random() * 15;
-          const newProgress = prev + increment;
-          
-          if (newProgress >= 90) {
-            clearInterval(progressInterval);
-            return 90;
+      const token = getToken();
+      
+      // 使用 SSE 连接获取实时进度
+      await fetchEventSource(`${API_BASE_URL}/api/images/infer/batch/progress`, {
+        method: 'GET',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        signal: abortController.signal,
+        onmessage(event) {
+          try {
+            const data = JSON.parse(event.data);
+            
+            switch (event.event) {
+              case 'progress':
+                // 更新进度信息
+                if (data.total_samples !== undefined && data.current !== undefined) {
+                  setTotalSamples(data.total_samples);
+                  setCurrentSamples(data.current);
+                  
+                  // 计算进度百分比
+                  const progress = data.total_samples > 0 
+                    ? (data.current / data.total_samples) * 100 
+                    : 0;
+                  setAnalysisProgress(Math.min(progress, 100));
+                  
+                  // 更新当前分析的样本编号和消息
+                  if (data.sample_number) {
+                    setCurrentSampleNumber(data.sample_number);
+                  }
+                  if (data.message) {
+                    setAnalysisMessage(data.message);
+                  }
+                  
+                  console.log('进度更新:', data);
+                }
+                break;
+                
+              case 'result':
+                // 处理单个样本的分析结果
+                setAnalysisResults(prev => [...prev, {
+                  sample_number: data.sample_number,
+                  success: data.success,
+                  total_cells: data.total_cells,
+                  checklist_number: data.checklist_number,
+                  error: data.error
+                }]);
+                
+                console.log('样本分析结果:', data);
+                break;
+                
+              case 'complete':
+                // 分析完成
+                setAnalysisProgress(100);
+                setCurrentSamples(data.analyzed_samples + (data.failed_samples || 0));
+                
+                // 使用函数式更新来获取最新的 analysisResults
+                setAnalysisResults(prevResults => {
+                  setTimeout(() => {
+                    setIsAnalyzing(false);
+                    setAnalysisProgress(0);
+                    
+                    // 显示完成消息
+                    const message = data.message || `分析完成！成功 ${data.analyzed_samples} 个，失败 ${data.failed_samples || 0} 个`;
+                    alert(message);
+                    
+                    // 刷新列表数据
+                    window.dispatchEvent(new CustomEvent('analysisComplete', { 
+                      detail: { 
+                        analyzed_samples: data.analyzed_samples,
+                        failed_samples: data.failed_samples,
+                        results: prevResults
+                      } 
+                    }));
+                  }, 500);
+                  
+                  return prevResults;
+                });
+                break;
+                
+              case 'error':
+                // 发生错误
+                console.error('分析错误:', data.error);
+                setIsAnalyzing(false);
+                setAnalysisProgress(0);
+                alert(`分析错误: ${data.error}`);
+                break;
+                
+              default:
+                console.log('未知事件类型:', event.event, data);
+            }
+          } catch (err) {
+            console.error('解析 SSE 数据失败:', err, event.data);
           }
-          return newProgress;
-        });
-      }, 200);
-
-      // 调用API进行图像分析
-      const result = await batchInfer(uploadedFiles);
-      
-      clearInterval(progressInterval);
-      setAnalysisProgress(100);
-      
-      setTimeout(() => {
-        setIsAnalyzing(false);
-        setAnalysisProgress(0);
-        alert(`分析完成！共分析 ${result.total_images || uploadedFiles.length} 张图片`);
-      }, 500);
+        },
+        onerror(err) {
+          console.error('SSE 连接错误:', err);
+          setIsAnalyzing(false);
+          setAnalysisProgress(0);
+          alert('连接错误，请重试');
+        },
+        onclose() {
+          console.log('SSE 连接已关闭');
+          abortControllerRef.current = null;
+        }
+      });
     } catch (err: any) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
       setIsAnalyzing(false);
       setAnalysisProgress(0);
-      alert(err.message || '分析失败');
+      console.error('分析失败:', err);
+      
+      // 如果是用户取消，不显示错误
+      if (err.name !== 'AbortError') {
+        alert(err.message || '分析失败');
+      }
     }
   };
+
 
   const renderContent = () => {
     if (selectedNavItem === "实时扫描") {
@@ -337,11 +481,26 @@ const ScanManagement: React.FC = () => {
             <button 
               className={`analysis-button ${isAnalyzing ? 'analyzing' : ''}`}
               onClick={handleAnalysis}
-              disabled={isAnalyzing}
+              disabled={isAnalyzing || !patientUploaded || !imageUploaded}
             >
               {isAnalyzing ? (
                 <div className="analysis-progress">
-                  <div className="progress-text">分析中... {Math.round(Math.min(analysisProgress, 100))}%</div>
+                  <div className="progress-text">
+                    {totalSamples > 0 
+                      ? `分析中... ${currentSamples}/${totalSamples} (${Math.round(Math.min(analysisProgress, 100))}%)`
+                      : `分析中... ${Math.round(Math.min(analysisProgress, 100))}%`
+                    }
+                    {currentSampleNumber && (
+                      <div style={{ fontSize: '12px', marginTop: '4px', opacity: 0.8 }}>
+                        当前样本: {currentSampleNumber}
+                      </div>
+                    )}
+                    {analysisMessage && (
+                      <div style={{ fontSize: '12px', marginTop: '2px', opacity: 0.7 }}>
+                        {analysisMessage}
+                      </div>
+                    )}
+                  </div>
                   <div className="progress-bar">
                     <div 
                       className="progress-fill" 
@@ -611,11 +770,26 @@ const ScanManagement: React.FC = () => {
           <button 
             className={`analysis-button ${isAnalyzing ? 'analyzing' : ''}`}
             onClick={handleAnalysis}
-            disabled={isAnalyzing}
+            disabled={isAnalyzing || !patientUploaded || !imageUploaded}
           >
             {isAnalyzing ? (
               <div className="analysis-progress">
-                <div className="progress-text">分析中... {Math.round(Math.min(analysisProgress, 100))}%</div>
+                <div className="progress-text">
+                  {totalSamples > 0 
+                    ? `分析中... ${currentSamples}/${totalSamples} (${Math.round(Math.min(analysisProgress, 100))}%)`
+                    : `分析中... ${Math.round(Math.min(analysisProgress, 100))}%`
+                  }
+                  {currentSampleNumber && (
+                    <div style={{ fontSize: '12px', marginTop: '4px', opacity: 0.8 }}>
+                      当前样本: {currentSampleNumber}
+                    </div>
+                  )}
+                  {analysisMessage && (
+                    <div style={{ fontSize: '12px', marginTop: '2px', opacity: 0.7 }}>
+                      {analysisMessage}
+                    </div>
+                  )}
+                </div>
                 <div className="progress-bar">
                   <div 
                     className="progress-fill" 

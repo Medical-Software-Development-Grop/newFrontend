@@ -2,6 +2,7 @@
 import "./ReportAnalysis.css";
 import { getSmears, Smear } from "./api/smear";
 import { getCellStatistics, CellStatistics } from "./api/cellClassification";
+import { getChecklistBySampleNumber, Checklist } from "./api/checklist";
 
 // 将后端Smear数据转换为前端Sample格式
 interface Sample {
@@ -135,6 +136,7 @@ const ReportAnalysis: React.FC = () => {
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [cellStatistics, setCellStatistics] = useState<CellStatistics | null>(null);
+  const [checklist, setChecklist] = useState<Checklist | null>(null);
 
   const selectedSample = useMemo(() => samples.find(sample => sample.id === selectedSampleId), [selectedSampleId, samples]);
 
@@ -206,45 +208,54 @@ const ReportAnalysis: React.FC = () => {
     }
   };
 
-  // 加载选中样本的细胞统计信息
+  // 加载选中样本的检查单和细胞统计信息
   useEffect(() => {
-    const loadCellStatistics = async () => {
+    const loadChecklistAndStatistics = async () => {
       if (!selectedSampleId) return;
       
       const selectedSample = samples.find(s => s.id === selectedSampleId);
       if (!selectedSample) return;
 
       try {
-        // 获取样本的完整信息
-        const smearResponse = await getSmears({
-          skip: 0,
-          limit: 1000,
-          sample_number: selectedSample.sampleNumber,
-        });
-
-        if (smearResponse.items.length === 0) {
-          setCellStatistics(null);
-          return;
+        // 优先使用检查单获取细胞计数（包含 cell_counts 字段）
+        try {
+          const checklistData = await getChecklistBySampleNumber(selectedSample.sampleNumber);
+          setChecklist(checklistData);
+          console.log('检查单数据:', checklistData);
+          console.log('细胞计数:', checklistData.cell_counts);
+        } catch (checklistErr: any) {
+          console.warn('获取检查单失败，尝试使用细胞统计接口:', checklistErr);
+          setChecklist(null);
         }
 
-        const smear = smearResponse.items[0];
-        
-        // 确保smear.id存在
-        if (!smear.id) {
-          console.warn(`样本 ${selectedSample.sampleNumber} 没有id字段，无法加载细胞统计数据`);
+        // 同时获取细胞统计信息（作为补充）
+        try {
+          const smearResponse = await getSmears({
+            skip: 0,
+            limit: 1000,
+            sample_number: selectedSample.sampleNumber,
+          });
+
+          if (smearResponse.items.length > 0) {
+            const smear = smearResponse.items[0];
+            
+            if (smear.id) {
+              const stats = await getCellStatistics(smear.id);
+              setCellStatistics(stats);
+            }
+          }
+        } catch (statsErr: any) {
+          console.warn('加载细胞统计信息失败:', statsErr);
           setCellStatistics(null);
-          return;
         }
-        
-        const stats = await getCellStatistics(smear.id);
-        setCellStatistics(stats);
       } catch (err: any) {
-        console.error('加载细胞统计信息失败:', err);
+        console.error('加载数据失败:', err);
+        setChecklist(null);
         setCellStatistics(null);
       }
     };
 
-    loadCellStatistics();
+    loadChecklistAndStatistics();
   }, [selectedSampleId, samples]);
 
   // 组件挂载和分页变化时加载数据
@@ -310,6 +321,71 @@ const ReportAnalysis: React.FC = () => {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   
   const pagedSamples = samples;
+
+  // 根据检查单的 cell_counts 更新细胞数量
+  // 创建细胞名称到检查单字段的映射
+  const cellNameMapping: Record<string, string> = {
+    "微生物": "microorganism",
+    "成熟红细胞": "mature_erythrocyte",
+    "大红细胞": "macrocyte",
+    "小红细胞": "microcyte",
+    "椭圆形和卵圆形红细胞": "oval_erythrocyte",
+    "裂红细胞": "schistocyte",
+    "有核红细胞": "nucleated_erythrocyte",
+    "小淋巴细胞": "small_lymphocyte",
+    "大淋巴细胞": "large_lymphocyte",
+    "反应性淋巴细胞": "reactive_lymphocyte",
+    "浆细胞": "plasma_cell",
+    "正常血小板": "normal_platelet",
+    "大血小板": "large_platelet",
+    "异形血小板": "abnormal_platelet",
+    "血小板聚集成簇": "platelet_cluster",
+    "巨核细胞": "megakaryocyte",
+    "早幼粒细胞": "promyelocyte",
+    "中幼粒细胞": "myelocyte",
+    "杆状核中性粒细胞": "band_neutrophil",
+    "分叶核中性粒细胞": "segmented_neutrophil",
+    "嗜酸性粒细胞": "eosinophil",
+    "嗜碱性粒细胞": "basophil",
+    "中性粒细胞(含空泡)": "vacuolated_neutrophil",
+    "原始细胞": "blast_cell",
+    "成熟单核细胞": "mature_monocyte",
+    "其他": "other"
+  };
+
+  // 获取细胞数量（优先使用检查单的 cell_counts）
+  const getCellCount = (cellName: string): number => {
+    const cellKey = cellNameMapping[cellName];
+    if (checklist?.cell_counts && cellKey && checklist.cell_counts[cellKey] !== undefined) {
+      return checklist.cell_counts[cellKey];
+    }
+    // 如果没有检查单数据，尝试从 cellStatistics 获取
+    if (cellStatistics?.cell_counts && cellKey && cellStatistics.cell_counts[cellKey] !== undefined) {
+      return cellStatistics.cell_counts[cellKey];
+    }
+    return 0;
+  };
+
+  // 计算总细胞数
+  const totalCells = useMemo(() => {
+    if (checklist?.cell_counts) {
+      return Object.values(checklist.cell_counts).reduce((sum, count) => sum + count, 0);
+    }
+    if (cellStatistics?.total_cells) {
+      return cellStatistics.total_cells;
+    }
+    return 0;
+  }, [checklist, cellStatistics]);
+
+  // 计算各系统的细胞数量
+  const getSystemCellCount = (sectionId: string): number => {
+    const section = cellSections.find(s => s.id === sectionId);
+    if (!section) return 0;
+    
+    return section.rows.reduce((sum, row) => {
+      return sum + getCellCount(row.name);
+    }, 0);
+  };
 
   // 当页面大小改变时，调整当前页面
   useEffect(() => {
@@ -481,17 +557,25 @@ const ReportAnalysis: React.FC = () => {
             <div className="summary-metrics">
               <div className="metric metric-total">
                 <span className="metric-label">细胞总数</span>
-                <span className="metric-value">{cellStatistics?.total_cells ?? 0}</span>
+                <span className="metric-value">{totalCells}</span>
               </div>
               {summaryMetrics.map(metric => {
-                // 根据细胞统计数据更新指标值（这里简化处理，实际可能需要根据cell_counts映射）
-                const cellCount = cellStatistics?.cell_counts ? 
-                  Object.values(cellStatistics.cell_counts).reduce((sum: number, count: number) => sum + count, 0) / 6 : 
-                  0;
+                // 根据系统ID映射到对应的section
+                const systemMapping: Record<string, string> = {
+                  "红细胞系统": "red",
+                  "巨核细胞及血小板": "megakaryocyte",
+                  "粒细胞系统": "granular",
+                  "单核细胞系统": "monocyte",
+                  "原始细胞系统": "primitive",
+                  "其他细胞": "other"
+                };
+                const sectionId = systemMapping[metric.label] || "";
+                const systemCount = sectionId ? getSystemCellCount(sectionId) : 0;
+                
                 return (
                   <div key={metric.label} className="metric">
                     <span className="metric-label">{metric.label}</span>
-                    <span className="metric-value">{cellStatistics ? Math.round(cellCount) : "0"}</span>
+                    <span className="metric-value">{systemCount}</span>
                   </div>
                 );
               })}
@@ -513,15 +597,19 @@ const ReportAnalysis: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {section.rows.map(row => (
-                        <tr key={row.name}>
-                          <td>{row.name}</td>
-                          <td>{row.count}</td>
-                          <td>{row.percent}</td>
-                          <td>{row.reference}</td>
-                          <td>{row.status}</td>
-                        </tr>
-                      ))}
+                      {section.rows.map(row => {
+                        const cellCount = getCellCount(row.name);
+                        const percent = totalCells > 0 ? ((cellCount / totalCells) * 100).toFixed(1) : "0";
+                        return (
+                          <tr key={row.name}>
+                            <td>{row.name}</td>
+                            <td>{cellCount}</td>
+                            <td>{percent}%</td>
+                            <td>{row.reference}</td>
+                            <td>{row.status}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -62,18 +62,42 @@ export const uploadImages = async (
   return response.json();
 };
 
-// 获取样本的所有图片
+// 获取样本的所有图片（返回包含 url 字段的区域图片）
 export const getSampleImages = async (sampleNumber: string): Promise<SampleImagesResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/images/sample/${sampleNumber}`, {
+  const response = await fetch(`${API_BASE_URL}/api/images/sample/${encodeURIComponent(sampleNumber)}`, {
     method: 'GET',
     headers: getUploadHeaders(),
   });
 
   if (!response.ok) {
-    throw new Error('获取图片列表失败');
+    const error = await response.json().catch(() => ({ detail: '获取图片列表失败' }));
+    throw new Error(error.detail || '获取图片列表失败');
   }
 
   return response.json();
+};
+
+// 根据存储路径查看图片
+export const getImageByStoragePath = async (storagePath: string): Promise<Blob> => {
+  // 对路径进行编码，处理特殊字符
+  const encodedPath = encodeURIComponent(storagePath);
+  const response = await fetch(`${API_BASE_URL}/api/images/view/${encodedPath}`, {
+    method: 'GET',
+    headers: getUploadHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: '获取图片失败' }));
+    throw new Error(error.detail || '获取图片失败');
+  }
+
+  return response.blob();
+};
+
+// 获取图片 URL（返回 URL 字符串而不是 Blob）
+export const getImageUrlByStoragePath = (storagePath: string): string => {
+  const encodedPath = encodeURIComponent(storagePath);
+  return `${API_BASE_URL}/api/images/view/${encodedPath}`;
 };
 
 // 批量推理接口
