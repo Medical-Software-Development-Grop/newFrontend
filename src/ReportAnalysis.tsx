@@ -2,7 +2,7 @@
 import "./ReportAnalysis.css";
 import { getSmears, Smear } from "./api/smear";
 import { getCellStatistics, CellStatistics } from "./api/cellClassification";
-import { getChecklistBySampleNumber, Checklist } from "./api/checklist";
+import { getChecklistBySampleNumber, Checklist, CellCounts } from "./api/checklist";
 
 // 将后端Smear数据转换为前端Sample格式
 interface Sample {
@@ -116,12 +116,13 @@ const cellSections: CellSection[] = [
 ];
 
 const summaryMetrics = [
-  { label: "红细胞系统", value: "0" },
-  { label: "巨核细胞及血小板", value: "0" },
-  { label: "粒细胞系统", value: "0" },
-  { label: "单核细胞系统", value: "0" },
-  { label: "原始细胞系统", value: "0" },
-  { label: "其他细胞", value: "0" }
+  { label: "幼红系列", value: "0", category: "幼红系列" },
+  { label: "巨核细胞系", value: "0", category: "巨核细胞系" },
+  { label: "中性粒细胞系统", value: "0", category: "中性粒细胞系统" },
+  { label: "淋巴细胞系", value: "0", category: "淋巴细胞系" },
+  { label: "单核细胞系", value: "0", category: "单核细胞系" },
+  { label: "组织类细胞", value: "0", category: "组织类细胞" },
+  { label: "嗜酸、嗜碱粒", value: "0", category: "嗜酸、嗜碱粒" }
 ];
 
 const ReportAnalysis: React.FC = () => {
@@ -323,62 +324,149 @@ const ReportAnalysis: React.FC = () => {
   const pagedSamples = samples;
 
   // 根据检查单的 cell_counts 更新细胞数量
-  // 创建细胞名称到检查单字段的映射
-  const cellNameMapping: Record<string, string> = {
-    "微生物": "microorganism",
-    "成熟红细胞": "mature_erythrocyte",
-    "大红细胞": "macrocyte",
-    "小红细胞": "microcyte",
-    "椭圆形和卵圆形红细胞": "oval_erythrocyte",
-    "裂红细胞": "schistocyte",
-    "有核红细胞": "nucleated_erythrocyte",
-    "小淋巴细胞": "small_lymphocyte",
-    "大淋巴细胞": "large_lymphocyte",
-    "反应性淋巴细胞": "reactive_lymphocyte",
-    "浆细胞": "plasma_cell",
-    "正常血小板": "normal_platelet",
-    "大血小板": "large_platelet",
-    "异形血小板": "abnormal_platelet",
-    "血小板聚集成簇": "platelet_cluster",
-    "巨核细胞": "megakaryocyte",
-    "早幼粒细胞": "promyelocyte",
-    "中幼粒细胞": "myelocyte",
-    "杆状核中性粒细胞": "band_neutrophil",
-    "分叶核中性粒细胞": "segmented_neutrophil",
-    "嗜酸性粒细胞": "eosinophil",
-    "嗜碱性粒细胞": "basophil",
-    "中性粒细胞(含空泡)": "vacuolated_neutrophil",
-    "原始细胞": "blast_cell",
-    "成熟单核细胞": "mature_monocyte",
-    "其他": "other"
+  // 创建细胞名称到检查单字段的映射（新的嵌套结构）
+  // 格式: { category: "大类名", subCategory: "子类名" }
+  const cellNameMapping: Record<string, { category: string; subCategory: string }> = {
+    // 组织类细胞
+    "肥大细胞": { category: "组织类细胞", subCategory: "肥大细胞" },
+    "吞噬细胞": { category: "组织类细胞", subCategory: "吞噬细胞" },
+    "破骨细胞": { category: "组织类细胞", subCategory: "破骨细胞" },
+    "退化细胞": { category: "组织类细胞", subCategory: "退化细胞" },
+    "成骨细胞": { category: "组织类细胞", subCategory: "成骨细胞" },
+    "脂肪细胞": { category: "组织类细胞", subCategory: "脂肪细胞" },
+    "内皮细胞": { category: "组织类细胞", subCategory: "内皮细胞" },
+    "纤维细胞": { category: "组织类细胞", subCategory: "纤维细胞" },
+    
+    // 中性粒细胞系统
+    "原始粒细胞": { category: "中性粒细胞系统", subCategory: "原始粒细胞" },
+    "早幼粒细胞": { category: "中性粒细胞系统", subCategory: "早幼粒细胞" },
+    "中幼粒细胞": { category: "中性粒细胞系统", subCategory: "中幼粒细胞" },
+    "晚幼粒细胞": { category: "中性粒细胞系统", subCategory: "晚幼粒细胞" },
+    "杆状核中性粒细胞": { category: "中性粒细胞系统", subCategory: "杆状核" },
+    "分叶核中性粒细胞": { category: "中性粒细胞系统", subCategory: "分叶核" },
+    "中性粒细胞(含空泡)": { category: "中性粒细胞系统", subCategory: "分叶核" },
+    
+    // 嗜酸、嗜碱粒
+    "嗜酸性粒细胞": { category: "嗜酸、嗜碱粒", subCategory: "嗜酸性粒细胞" },
+    "嗜碱性粒细胞": { category: "嗜酸、嗜碱粒", subCategory: "嗜碱性粒细胞" },
+    
+    // 幼红系列
+    "原始红细胞": { category: "幼红系列", subCategory: "原始红细胞" },
+    "早幼红细胞": { category: "幼红系列", subCategory: "早幼红细胞" },
+    "中幼红细胞": { category: "幼红系列", subCategory: "中幼红细胞" },
+    "晚幼红细胞": { category: "幼红系列", subCategory: "晚幼红细胞" },
+    "有核红细胞": { category: "幼红系列", subCategory: "晚幼红细胞" },
+    "成熟红细胞": { category: "幼红系列", subCategory: "成熟红细胞" },
+    "大红细胞": { category: "幼红系列", subCategory: "成熟红细胞" },
+    "小红细胞": { category: "幼红系列", subCategory: "成熟红细胞" },
+    "椭圆形和卵圆形红细胞": { category: "幼红系列", subCategory: "成熟红细胞" },
+    "裂红细胞": { category: "幼红系列", subCategory: "成熟红细胞" },
+    
+    // 淋巴细胞系
+    "原始淋巴细胞": { category: "淋巴细胞系", subCategory: "原始淋巴细胞" },
+    "幼稚淋巴细胞": { category: "淋巴细胞系", subCategory: "幼稚淋巴细胞" },
+    "小淋巴细胞": { category: "淋巴细胞系", subCategory: "成熟淋巴细胞" },
+    "大淋巴细胞": { category: "淋巴细胞系", subCategory: "成熟淋巴细胞" },
+    "反应性淋巴细胞": { category: "淋巴细胞系", subCategory: "异形淋巴细胞" },
+    "浆细胞": { category: "淋巴细胞系", subCategory: "浆细胞" },
+    
+    // 单核细胞系
+    "原始单核细胞": { category: "单核细胞系", subCategory: "原始单核细胞" },
+    "幼稚单核细胞": { category: "单核细胞系", subCategory: "幼稚单核细胞" },
+    "成熟单核细胞": { category: "单核细胞系", subCategory: "成熟单核细胞" },
+    
+    // 巨核细胞系
+    "原始巨核细胞": { category: "巨核细胞系", subCategory: "原始巨核细胞" },
+    "幼稚巨核细胞": { category: "巨核细胞系", subCategory: "幼稚巨核细胞" },
+    "颗粒型巨核细胞": { category: "巨核细胞系", subCategory: "颗粒型巨核细胞" },
+    "产板型巨核细胞": { category: "巨核细胞系", subCategory: "产板型巨核细胞" },
+    "裸核型巨核细胞": { category: "巨核细胞系", subCategory: "裸核型巨核细胞" },
+    "巨核细胞": { category: "巨核细胞系", subCategory: "颗粒型巨核细胞" },
+    "正常血小板": { category: "巨核细胞系", subCategory: "血小板" },
+    "大血小板": { category: "巨核细胞系", subCategory: "血小板" },
+    "异形血小板": { category: "巨核细胞系", subCategory: "血小板" },
+    "血小板聚集成簇": { category: "巨核细胞系", subCategory: "血小板" },
+    
+    // 其他
+    "微生物": { category: "组织类细胞", subCategory: "其他" },
+    "原始细胞": { category: "中性粒细胞系统", subCategory: "原始粒细胞" },
+    "其他": { category: "组织类细胞", subCategory: "其他" }
   };
 
-  // 获取细胞数量（优先使用检查单的 cell_counts）
+  // 获取细胞数量（优先使用检查单的 cell_counts - 新嵌套结构）
   const getCellCount = (cellName: string): number => {
-    const cellKey = cellNameMapping[cellName];
-    if (checklist?.cell_counts && cellKey && checklist.cell_counts[cellKey] !== undefined) {
-      return checklist.cell_counts[cellKey];
+    const mapping = cellNameMapping[cellName];
+    
+    // 尝试从检查单的新嵌套结构获取
+    if (checklist?.cell_counts && mapping) {
+      const categoryData = checklist.cell_counts[mapping.category];
+      if (categoryData && typeof categoryData === 'object' && 'sub_categories' in categoryData) {
+        const subCount = categoryData.sub_categories?.[mapping.subCategory];
+        if (subCount !== undefined) {
+          return subCount;
+        }
+      }
     }
-    // 如果没有检查单数据，尝试从 cellStatistics 获取
-    if (cellStatistics?.cell_counts && cellKey && cellStatistics.cell_counts[cellKey] !== undefined) {
-      return cellStatistics.cell_counts[cellKey];
+    
+    // 如果没有检查单数据，尝试从 cellStatistics 获取（兼容旧格式）
+    if (cellStatistics?.cell_counts) {
+      // 旧格式是扁平的 key-value
+      const flatKey = cellName.toLowerCase().replace(/[()（）]/g, '').replace(/\s+/g, '_');
+      if (cellStatistics.cell_counts[flatKey] !== undefined) {
+        return cellStatistics.cell_counts[flatKey];
+      }
+    }
+    
+    return 0;
+  };
+
+  // 获取大类的细胞总数
+  const getCategoryCount = (categoryName: string): number => {
+    if (checklist?.cell_counts) {
+      const categoryData = checklist.cell_counts[categoryName];
+      if (categoryData && typeof categoryData === 'object' && 'count' in categoryData) {
+        return categoryData.count;
+      }
     }
     return 0;
   };
 
-  // 计算总细胞数
+  // 计算总细胞数（优先使用 total_cells 字段）
   const totalCells = useMemo(() => {
-    if (checklist?.cell_counts) {
-      return Object.values(checklist.cell_counts).reduce((sum, count) => sum + count, 0);
+    // 优先使用检查单的 total_cells 字段
+    if (checklist?.total_cells !== undefined) {
+      return checklist.total_cells;
     }
+    // 其次使用 cell_counts.total
+    if (checklist?.cell_counts?.total !== undefined && typeof checklist.cell_counts.total === 'number') {
+      return checklist.cell_counts.total;
+    }
+    // 兼容旧的 cellStatistics
     if (cellStatistics?.total_cells) {
       return cellStatistics.total_cells;
     }
     return 0;
   }, [checklist, cellStatistics]);
 
-  // 计算各系统的细胞数量
+  // 计算各系统的细胞数量（使用新的大类映射）
   const getSystemCellCount = (sectionId: string): number => {
+    // 前端 section ID 到后端大类名称的映射
+    const sectionToCategoryMapping: Record<string, string> = {
+      "red": "幼红系列",
+      "lymphocyte": "淋巴细胞系",
+      "megakaryocyte": "巨核细胞系",
+      "granular": "中性粒细胞系统",
+      "primitive": "中性粒细胞系统", // 原始细胞归入中性粒细胞系统
+      "monocyte": "单核细胞系",
+      "other": "组织类细胞"
+    };
+    
+    const categoryName = sectionToCategoryMapping[sectionId];
+    if (categoryName) {
+      return getCategoryCount(categoryName);
+    }
+    
+    // 兼容旧逻辑：如果没有大类数据，则累加子类
     const section = cellSections.find(s => s.id === sectionId);
     if (!section) return 0;
     
@@ -560,22 +648,13 @@ const ReportAnalysis: React.FC = () => {
                 <span className="metric-value">{totalCells}</span>
               </div>
               {summaryMetrics.map(metric => {
-                // 根据系统ID映射到对应的section
-                const systemMapping: Record<string, string> = {
-                  "红细胞系统": "red",
-                  "巨核细胞及血小板": "megakaryocyte",
-                  "粒细胞系统": "granular",
-                  "单核细胞系统": "monocyte",
-                  "原始细胞系统": "primitive",
-                  "其他细胞": "other"
-                };
-                const sectionId = systemMapping[metric.label] || "";
-                const systemCount = sectionId ? getSystemCellCount(sectionId) : 0;
+                // 直接使用大类名称获取统计数
+                const categoryCount = getCategoryCount(metric.category);
                 
                 return (
                   <div key={metric.label} className="metric">
                     <span className="metric-label">{metric.label}</span>
-                    <span className="metric-value">{systemCount}</span>
+                    <span className="metric-value">{categoryCount}</span>
                   </div>
                 );
               })}

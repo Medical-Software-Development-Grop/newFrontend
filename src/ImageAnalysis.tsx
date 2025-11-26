@@ -1572,6 +1572,7 @@ const ImageAnalysis: React.FC = () => {
                       setSelectedSub(defaultSub);
                       setShowClassifyEditor(true);
                     }}
+                    style={{ color: '#2563eb' }}
                   >
                     修改细胞分类
                   </button>
@@ -1614,7 +1615,7 @@ const ImageAnalysis: React.FC = () => {
                         type="button"
                         className="action-btn"
                         onClick={() => setShowClassifyEditor(false)}
-                        style={{ height: 40, padding: '0 16px', borderRadius: 10, fontWeight: 600 }}
+                        style={{ height: 40, padding: '0 16px', borderRadius: 10, fontWeight: 600, color: '#2563eb' }}
                       >
                         放弃修改
                       </button>

@@ -1,16 +1,45 @@
 import { API_BASE_URL, getAuthHeaders } from './config';
 
+// 细胞子类别计数
+export interface CellSubCategories {
+  [subCategory: string]: number;
+}
+
+// 细胞大类统计
+export interface CellCategoryCount {
+  count: number;
+  sub_categories: CellSubCategories;
+}
+
+// 细胞统计数据（新的嵌套结构）
+export interface CellCounts {
+  "组织类细胞"?: CellCategoryCount;
+  "中性粒细胞系统"?: CellCategoryCount;
+  "嗜酸、嗜碱粒"?: CellCategoryCount;
+  "幼红系列"?: CellCategoryCount;
+  "淋巴细胞系"?: CellCategoryCount;
+  "单核细胞系"?: CellCategoryCount;
+  "巨核细胞系"?: CellCategoryCount;
+  total?: number;
+  [key: string]: CellCategoryCount | number | undefined;
+}
+
 export interface Checklist {
-  id: number;
+  id?: number;
   checklist_number: string;
-  patient_id: number;
-  sample_id: number;
-  reviewing_doctor_id?: number;
+  patient_number?: string;
+  sample_number?: string;
+  reviewing_doctor_number?: string;
   report_analysis?: string;
-  review_status: string;
+  typical_figure_1_path?: string;
+  typical_figure_2_path?: string;
+  check_time?: string;
   marking_status: string;
   report_date?: string;
-  cell_counts?: Record<string, number>; // 细胞计数信息
+  cell_counts?: CellCounts; // 新的嵌套细胞统计结构
+  total_cells?: number; // 细胞总数
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ChecklistListResponse {
@@ -23,7 +52,11 @@ export interface ChecklistFilters {
   limit?: number;
   patient_id?: number;
   sample_id?: number;
-  review_status?: string;
+}
+
+// 更新细胞统计数据的请求体
+export interface ChecklistCellCountsUpdate {
+  cell_counts: CellCounts;
 }
 
 // 获取检查单列表
@@ -34,7 +67,6 @@ export const getChecklists = async (filters: ChecklistFilters = {}): Promise<Che
   if (filters.limit !== undefined) params.append('limit', filters.limit.toString());
   if (filters.patient_id) params.append('patient_id', filters.patient_id.toString());
   if (filters.sample_id) params.append('sample_id', filters.sample_id.toString());
-  if (filters.review_status) params.append('review_status', filters.review_status);
 
   const response = await fetch(`${API_BASE_URL}/api/checklists?${params.toString()}`, {
     method: 'GET',
@@ -52,31 +84,32 @@ export const getChecklists = async (filters: ChecklistFilters = {}): Promise<Che
   };
 };
 
-// 获取单个检查单
-export const getChecklist = async (id: number): Promise<Checklist> => {
-  const response = await fetch(`${API_BASE_URL}/api/checklists/${id}`, {
+// 根据检查单编号获取检查单详情
+export const getChecklistByNumber = async (checklistNumber: string): Promise<Checklist> => {
+  const response = await fetch(`${API_BASE_URL}/api/checklists/${encodeURIComponent(checklistNumber)}`, {
     method: 'GET',
     headers: getAuthHeaders(),
   });
 
   if (!response.ok) {
-    throw new Error('获取检查单失败');
+    const error = await response.json().catch(() => ({ detail: '获取检查单失败' }));
+    throw new Error(error.detail || '获取检查单失败');
   }
 
   return response.json();
 };
 
-// 从样本生成检查单
+// 从样本生成检查单（使用样本编号）
 export const createChecklistFromSample = async (
-  sampleId: number,
-  reviewingDoctorId?: number
-): Promise<any> => {
+  sampleNumber: string,
+  reviewingDoctorNumber?: string
+): Promise<Checklist> => {
   const params = new URLSearchParams();
-  if (reviewingDoctorId) {
-    params.append('reviewing_doctor_id', reviewingDoctorId.toString());
+  if (reviewingDoctorNumber) {
+    params.append('reviewing_doctor_number', reviewingDoctorNumber);
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/checklists/from-sample/${sampleId}?${params.toString()}`, {
+  const response = await fetch(`${API_BASE_URL}/api/checklists/from-sample/${encodeURIComponent(sampleNumber)}?${params.toString()}`, {
     method: 'POST',
     headers: getAuthHeaders(),
   });
@@ -107,23 +140,48 @@ export const updateChecklist = async (id: number, checklistData: Partial<Checkli
 
 // 审核检查单
 export const reviewChecklist = async (
-  id: number,
+  checklistNumber: string,
   reviewData: {
-    review_status: string;
     report_analysis?: string;
     report_date?: string;
+    marking_status?: string;
   }
 ): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/api/checklists/${id}/review`, {
+  const response = await fetch(`${API_BASE_URL}/api/checklists/${encodeURIComponent(checklistNumber)}/review`, {
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify(reviewData),
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({ detail: '审核失败' }));
     throw new Error(error.detail || '审核失败');
   }
+};
+
+// 更新检查单的细胞统计数据
+export const updateChecklistCellCounts = async (
+  checklistNumber: string,
+  cellCounts: CellCounts
+): Promise<Checklist> => {
+  const response = await fetch(`${API_BASE_URL}/api/checklists/${encodeURIComponent(checklistNumber)}/cell-counts`, {
+    method: 'PUT',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ cell_counts: cellCounts }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: '更新细胞统计失败' }));
+    throw new Error(error.detail || '更新细胞统计失败');
+  }
+
+  return response.json();
 };
 
 // 根据样本编号获取检查单（包含 cell_counts 字段）

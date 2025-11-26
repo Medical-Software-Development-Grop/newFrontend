@@ -1405,6 +1405,47 @@
   color: #6b7280;
 }
 
+/* 操作按钮样式 */
+.action-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #d1d5db;
+  background: linear-gradient(135deg, #f9fafb, #ffffff);
+  color: #2563eb;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.action-btn:hover {
+  background: linear-gradient(135deg, #f3f4f6, #ffffff);
+  border-color: #2563eb;
+  color: #1d4ed8;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.15);
+  transform: translateY(-1px);
+}
+
+.action-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 主要操作按钮样式 */
+.action-btn.primary {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+.action-btn.primary:hover {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  border-color: #1d4ed8;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+
 
 
 
