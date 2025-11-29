@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAuthHeaders } from './config';
+import { API_BASE_URL, getAuthHeaders, handleUnauthorized } from './config';
 
 // 细胞子类别计数
 export interface CellSubCategories {
@@ -74,6 +74,10 @@ export const getChecklists = async (filters: ChecklistFilters = {}): Promise<Che
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     throw new Error('获取检查单列表失败');
   }
 
@@ -92,6 +96,10 @@ export const getChecklistByNumber = async (checklistNumber: string): Promise<Che
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     const error = await response.json().catch(() => ({ detail: '获取检查单失败' }));
     throw new Error(error.detail || '获取检查单失败');
   }
@@ -115,6 +123,10 @@ export const createChecklistFromSample = async (
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     const error = await response.json();
     throw new Error(error.detail || '生成检查单失败');
   }
@@ -131,6 +143,10 @@ export const updateChecklist = async (id: number, checklistData: Partial<Checkli
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     const error = await response.json();
     throw new Error(error.detail || '更新检查单失败');
   }
@@ -157,6 +173,10 @@ export const reviewChecklist = async (
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     const error = await response.json().catch(() => ({ detail: '审核失败' }));
     throw new Error(error.detail || '审核失败');
   }
@@ -177,6 +197,10 @@ export const updateChecklistCellCounts = async (
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     const error = await response.json().catch(() => ({ detail: '更新细胞统计失败' }));
     throw new Error(error.detail || '更新细胞统计失败');
   }

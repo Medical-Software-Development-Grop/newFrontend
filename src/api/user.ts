@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAuthHeaders } from './config';
+import { API_BASE_URL, getAuthHeaders, handleUnauthorized } from './config';
 
 export interface User {
   id: number;
@@ -22,8 +22,13 @@ export const getUsers = async (role?: string): Promise<User[]> => {
     });
 
     if (!response.ok) {
-      // 如果认证失败或服务器错误，返回空数组而不是抛出错误
-      if (response.status === 401 || response.status === 403 || response.status === 500) {
+      // 如果认证失败，触发登出
+      if (response.status === 401) {
+        handleUnauthorized();
+        return [];
+      }
+      // 如果其他错误，返回空数组而不是抛出错误
+      if (response.status === 403 || response.status === 500) {
         console.warn(`获取用户列表失败 (${response.status})，返回空列表`);
         return [];
       }

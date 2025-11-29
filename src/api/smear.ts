@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAuthHeaders } from './config';
+import { API_BASE_URL, getAuthHeaders, handleUnauthorized } from './config';
 
 export interface Smear {
   id: number;
@@ -73,6 +73,7 @@ export const getSmears = async (filters: SmearFilters = {}): Promise<SmearListRe
 
   if (!response.ok) {
     if (response.status === 401) {
+      handleUnauthorized();
       throw new Error('401 Unauthorized - 请重新登录');
     }
     const error = await response.json().catch(() => ({ detail: '获取样本列表失败' }));

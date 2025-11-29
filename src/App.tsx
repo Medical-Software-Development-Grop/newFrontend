@@ -15,6 +15,19 @@ function App() {
     if (token) {
       setIsLoggedIn(true);
     }
+
+    // 监听401未授权事件，自动跳转到登录页面
+    const handleUnauthorized = () => {
+      setIsLoggedIn(false);
+      removeToken();
+    };
+
+    window.addEventListener('unauthorized', handleUnauthorized);
+
+    // 清理事件监听器
+    return () => {
+      window.removeEventListener('unauthorized', handleUnauthorized);
+    };
   }, []);
 
   const handleLogin = () => {

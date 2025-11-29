@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAuthHeaders } from './config';
+import { API_BASE_URL, getAuthHeaders, handleUnauthorized } from './config';
 
 export interface Patient {
   id: number;
@@ -29,6 +29,10 @@ export const getPatients = async (search?: string): Promise<Patient[]> => {
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     throw new Error('获取病人列表失败');
   }
 
@@ -43,6 +47,10 @@ export const getPatient = async (id: number): Promise<Patient> => {
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     throw new Error('获取病人信息失败');
   }
 
@@ -71,6 +79,10 @@ export const updatePatient = async (id: number, patientData: PatientUpdate): Pro
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     let errorMessage = '更新病人信息失败';
     try {
       const error = await response.json();
@@ -101,6 +113,10 @@ export const createPatient = async (patientData: Omit<Patient, 'id' | 'created_a
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     const error = await response.json();
     throw new Error(error.detail || '创建病人失败');
   }

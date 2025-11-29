@@ -1,7 +1,7 @@
 ﻿import React, { useMemo, useState, useEffect } from "react";
 import "./ImageAnalysis.css";
 import { getSmears, Smear } from "./api/smear";
-import { getSampleImages, ImageInfo, deleteSampleImage } from "./api/image";
+import { getSampleImages, ImageInfo, deleteSampleImage, getSmearRegions, getImageUrlByStoragePath, SmearRegionsResponse } from "./api/image";
 import { getCellClassifications, getCellClassificationsBySampleNumber, getCellStatistics, CellClassification, updateCellClassificationByNumber } from "./api/cellClassification";
 import { API_BASE_URL, getToken } from "./api/config";
 
@@ -202,8 +202,10 @@ const ImageAnalysis: React.FC = () => {
   const [loadingCells, setLoadingCells] = useState<boolean>(false);
   const [regionImages, setRegionImages] = useState<ImageInfo[]>([]);
   const [cellImages, setCellImages] = useState<ImageInfo[]>([]);
+  const [markedImages, setMarkedImages] = useState<ImageInfo[]>([]);
   const [totalRegionCount, setTotalRegionCount] = useState<number>(0);
   const [totalCellCount, setTotalCellCount] = useState<number>(0);
+  const [totalMarkedCount, setTotalMarkedCount] = useState<number>(0);
   const [loadingImages, setLoadingImages] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title?: string; description?: string; cell?: CellClassification } | null>(null);
   const [isDeletingImage, setIsDeletingImage] = useState<boolean>(false);
@@ -225,7 +227,7 @@ const ImageAnalysis: React.FC = () => {
   
   const authToken = getToken();
 
-  // 使用实际的样本图片数据，如果没有则返回空数组
+  // 使用实际的样本图片数据，如果没有则返回空数组（用于区域图像）
   const imageData = useMemo<SampleImageItem[]>(() => {
     if (!regionImages || regionImages.length === 0) {
       return [];
@@ -298,6 +300,80 @@ const ImageAnalysis: React.FC = () => {
       };
     });
   }, [regionImages, apiBaseUrl, authToken]);
+
+  // 标记图像数据（用于标记图像标签页）
+  const markedImageData = useMemo<SampleImageItem[]>(() => {
+    if (!markedImages || markedImages.length === 0) {
+      return [];
+    }
+
+    return markedImages.map((img, index) => {
+      const rawSource = img.url || img.path || "";
+      let storagePath = img.path || "";
+
+      if (!rawSource) {
+        console.warn(`标记图片 ${index + 1} 缺少URL或路径`);
+        return {
+          id: index + 1,
+          url: "",
+          storagePath,
+          rawPath: rawSource
+        };
+      }
+
+      if (!storagePath) {
+        if (rawSource.startsWith(`${API_BASE_URL}/api/images/view/`)) {
+          storagePath = rawSource.replace(`${API_BASE_URL}/api/images/view/`, "");
+        } else if (rawSource.startsWith("/api/images/view/")) {
+          storagePath = rawSource.replace("/api/images/view/", "");
+        } else {
+          storagePath = rawSource;
+        }
+      }
+
+      try {
+        storagePath = decodeURIComponent(storagePath);
+      } catch (error) {
+        console.warn("标记图像存储路径解码失败:", { storagePath, error });
+      }
+      storagePath = storagePath.replace(/^\/+/, "");
+
+      let finalUrl = rawSource;
+
+      if (rawSource.startsWith("http://") || rawSource.startsWith("https://")) {
+        finalUrl = rawSource;
+      } else if (rawSource.startsWith("/api/images/view/")) {
+        finalUrl = `${API_BASE_URL}${rawSource}`;
+      } else if (rawSource.startsWith("/")) {
+        finalUrl = `${API_BASE_URL}${rawSource}`;
+      } else {
+        const encodedPath = rawSource
+          .split("/")
+          .map(segment => encodeURIComponent(segment))
+          .join("/");
+        finalUrl = `${API_BASE_URL}/api/images/view/${encodedPath}`;
+      }
+
+      try {
+        const urlObj = new URL(finalUrl);
+        if (authToken && apiBaseUrl && urlObj.origin === apiBaseUrl.origin && !urlObj.searchParams.has("token")) {
+          urlObj.searchParams.set("token", authToken);
+        }
+        finalUrl = urlObj.toString();
+      } catch (error) {
+        console.error("标记图像URL构建失败:", { rawSource, error });
+      }
+
+      console.log(`标记图片 ${index + 1} URL构建: 原始=${img.path || img.url}, 最终=${finalUrl}`);
+
+      return {
+        id: index + 1,
+        url: finalUrl,
+        storagePath,
+        rawPath: rawSource
+      };
+    });
+  }, [markedImages, apiBaseUrl, authToken]);
 
   // 加载样本数据（与SampleEdit使用相同的API和逻辑）
   const loadSamples = async () => {
@@ -447,27 +523,91 @@ const ImageAnalysis: React.FC = () => {
     setCurrentPage(prev => Math.min(prev, maxPage));
   }, [pageSize, totalCount]);
 
+  // 当切换标签页时，重置图像索引
+  useEffect(() => {
+    setCurrentImageIndex(0);
+  }, [activeTab]);
+
   // 加载样本的上传图片
   const loadSampleImages = async (sampleNumber: string) => {
     if (!sampleNumber) {
       setRegionImages([]);
       setCellImages([]);
+      setMarkedImages([]);
       setTotalRegionCount(0);
       setTotalCellCount(0);
+      setTotalMarkedCount(0);
       return;
     }
 
     setLoadingImages(true);
     try {
       console.log(`开始加载样本 ${sampleNumber} 的图片...`);
-      const imagesResponse = await getSampleImages(sampleNumber);
+      
+      // 并行获取图片数据和区域数据
+      const [imagesResponse, regionsResponse] = await Promise.all([
+        getSampleImages(sampleNumber),
+        getSmearRegions(sampleNumber) // 返回 SmearRegionsResponse 对象
+      ]);
+      
       console.log(`样本 ${sampleNumber} 的图片API响应:`, imagesResponse);
+      console.log(`样本 ${sampleNumber} 的区域数据响应:`, regionsResponse);
+
+      // 从区域数据中提取标记图像（优先使用 marked_image_url，如果没有则从 marked_image_path 构建）
+      const markedImagePaths: ImageInfo[] = [];
+      const regions = regionsResponse.regions || [];
+      
+      if (regions.length > 0) {
+        console.log(`找到 ${regions.length} 个区域记录`);
+        regions.forEach((region: any, index: number) => {
+          console.log(`区域 ${index + 1}:`, region);
+          
+          // 优先使用 marked_image_url（API已提供完整URL）
+          if (region.marked_image_url) {
+            console.log(`找到标记图像URL: ${region.marked_image_url}`);
+            markedImagePaths.push({
+              path: region.marked_image_path || region.marked_image_url,
+              url: region.marked_image_url
+            });
+          } 
+          // 如果没有 marked_image_url，但有 marked_image_path，则构建URL
+          else if (region.marked_image_path) {
+            const markedPath = region.marked_image_path;
+            console.log(`找到标记图像路径，构建URL: ${markedPath}`);
+            const markedUrl = getImageUrlByStoragePath(markedPath);
+            markedImagePaths.push({
+              path: markedPath,
+              url: markedUrl
+            });
+          } else {
+            console.log(`区域 ${index + 1} (${region.region_number}) 没有标记图像`);
+          }
+        });
+        console.log(`从区域数据中提取了 ${markedImagePaths.length} 个标记图像`);
+      } else {
+        console.warn(`区域数据为空:`, regionsResponse);
+      }
 
       const markedImagesResponse =
         (imagesResponse as typeof imagesResponse & { marked_images?: ImageInfo[] }).marked_images;
       const rawMarkedImages = Array.isArray(markedImagesResponse)
         ? [...markedImagesResponse]
         : [];
+      
+      // 合并从API返回的标记图像和从区域数据获取的标记图像
+      const allMarkedImages = [...rawMarkedImages];
+      if (markedImagePaths.length > 0) {
+        // 避免重复添加
+        markedImagePaths.forEach(markedImg => {
+          const exists = allMarkedImages.some(img => 
+            img.path === markedImg.path || img.url === markedImg.url
+          );
+          if (!exists) {
+            allMarkedImages.push(markedImg);
+          }
+        });
+      }
+
       const rawRegionImages =
         imagesResponse.region_images ??
         imagesResponse.images ??
@@ -476,12 +616,24 @@ const ImageAnalysis: React.FC = () => {
         imagesResponse.cell_images ??
         [];
 
+      // 将标记图像添加到区域图像列表中（用于在区域图像标签页显示）
       let regionImagesFromApi: ImageInfo[] = [];
-      if (rawMarkedImages.length > 0) {
-        regionImagesFromApi = [...rawMarkedImages];
-      } else if (Array.isArray(rawRegionImages)) {
+      if (Array.isArray(rawRegionImages)) {
         regionImagesFromApi = [...rawRegionImages];
       }
+      
+      // 将标记图像也添加到区域图像列表中
+      if (allMarkedImages.length > 0) {
+        allMarkedImages.forEach(markedImg => {
+          const exists = regionImagesFromApi.some(img => 
+            img.path === markedImg.path || img.url === markedImg.url
+          );
+          if (!exists) {
+            regionImagesFromApi.push(markedImg);
+          }
+        });
+      }
+      
       let cellImagesFromApi = Array.isArray(rawCellImages) ? [...rawCellImages] : [];
 
       if ((!cellImagesFromApi || cellImagesFromApi.length === 0) && regionImagesFromApi.length > 0) {
@@ -536,17 +688,39 @@ const ImageAnalysis: React.FC = () => {
 
       const validRegionImages = filterBySample(regionImagesFromApi);
       const validCellImages = filterBySample(cellImagesFromApi);
+      
+      // 标记图像不需要按样本编号过滤，因为它们是从SmearRegionTable获取的，已经属于当前样本
+      // 只需要过滤掉空路径的
+      const validMarkedImages = allMarkedImages.filter(img => {
+        const path = img.path || img.url || "";
+        if (!path) {
+          return false;
+        }
+        return true;
+      });
+      
+      console.log(`标记图像处理: 原始=${allMarkedImages.length} 张, 有效=${validMarkedImages.length} 张`);
 
       setRegionImages(validRegionImages);
       setCellImages(validCellImages);
+      setMarkedImages(validMarkedImages);
       setTotalRegionCount(regionImagesFromApi.length);
       setTotalCellCount(cellImagesFromApi.length);
+      setTotalMarkedCount(allMarkedImages.length);
 
       if (validRegionImages.length > 0) {
         setCurrentImageIndex(0);
         console.log(`✅ 区域图：共 ${regionImagesFromApi.length} 张，展示 ${validRegionImages.length} 张`);
       } else {
         console.warn(`⚠️ 样本 ${sampleNumber} 暂无有效区域图`);
+      }
+
+      if (validMarkedImages.length > 0) {
+        console.log(`✅ 标记图：共 ${allMarkedImages.length} 张，展示 ${validMarkedImages.length} 张`);
+        console.log(`标记图像详情:`, validMarkedImages.map(img => ({ path: img.path, url: img.url })));
+      } else {
+        console.warn(`⚠️ 样本 ${sampleNumber} 暂无有效标记图`);
+        console.log(`调试信息: regionsResponse=${JSON.stringify(regionsResponse)}, markedImagePaths=${markedImagePaths.length}, allMarkedImages=${allMarkedImages.length}`);
       }
 
       if (validCellImages.length === 0 && cellImagesFromApi.length > 0) {
@@ -556,8 +730,10 @@ const ImageAnalysis: React.FC = () => {
       console.error(`❌ 加载样本 ${sampleNumber} 的图片失败:`, err);
       setRegionImages([]);
       setCellImages([]);
+      setMarkedImages([]);
       setTotalRegionCount(0);
       setTotalCellCount(0);
+      setTotalMarkedCount(0);
     } finally {
       setLoadingImages(false);
     }
@@ -719,6 +895,16 @@ const ImageAnalysis: React.FC = () => {
     setZoomLevel(prev => Math.max(prev - 25, 25));
   };
 
+  // 根据当前标签页获取正确的图像数据
+  const getCurrentImageData = () => {
+    if (activeTab === "标记图像") {
+      return markedImageData;
+    } else if (activeTab === "区域图像") {
+      return imageData;
+    }
+    return imageData; // 默认使用区域图像数据
+  };
+
   const handleFirstImage = () => {
     setCurrentImageIndex(0);
   };
@@ -728,14 +914,16 @@ const ImageAnalysis: React.FC = () => {
   };
 
   const handleNextImage = () => {
-    if (imageData.length > 0) {
-      setCurrentImageIndex(prev => Math.min(prev + 1, imageData.length - 1));
+    const currentData = getCurrentImageData();
+    if (currentData.length > 0) {
+      setCurrentImageIndex(prev => Math.min(prev + 1, currentData.length - 1));
     }
   };
 
   const handleLastImage = () => {
-    if (imageData.length > 0) {
-      setCurrentImageIndex(imageData.length - 1);
+    const currentData = getCurrentImageData();
+    if (currentData.length > 0) {
+      setCurrentImageIndex(currentData.length - 1);
     }
   };
 
@@ -1160,7 +1348,7 @@ const ImageAnalysis: React.FC = () => {
               >
                 标记图像
               </button>
-              <span className="tab-counter">{regionImages.length}</span>
+              <span className="tab-counter">{markedImages.length}</span>
               <button 
                 className={`header-tab ${activeTab === "区域图像" ? "active" : ""}`}
                 onClick={() => setActiveTab("区域图像")}
@@ -1240,110 +1428,6 @@ const ImageAnalysis: React.FC = () => {
             <main className="analysis-main">
               {activeTab === "区域图像" ? (
                 <div className="region-images-view">
-                  <div className="region-image-container">
-                    <div className="main-region-image">
-                      <div className="image-viewer">
-                        <div className="high-resolution-image">
-                          {/* 高分辨率显微镜图像 */}
-                          <div className="microscopic-field">
-                            {/* 红细胞 */}
-                            <div className="red-blood-cell" style={{ top: '15%', left: '10%' }}></div>
-                            <div className="red-blood-cell" style={{ top: '20%', left: '20%' }}></div>
-                            <div className="red-blood-cell" style={{ top: '25%', left: '30%' }}></div>
-                            <div className="red-blood-cell" style={{ top: '30%', left: '40%' }}></div>
-                            <div className="red-blood-cell" style={{ top: '35%', left: '50%' }}></div>
-                            <div className="red-blood-cell" style={{ top: '40%', left: '60%' }}></div>
-                            <div className="red-blood-cell" style={{ top: '45%', left: '70%' }}></div>
-                            <div className="red-blood-cell" style={{ top: '50%', left: '80%' }}></div>
-                            <div className="red-blood-cell" style={{ top: '55%', left: '85%' }}></div>
-                            
-                            {/* 异常细胞（紫色） */}
-                            <div className="abnormal-cell" style={{ top: '25%', left: '15%' }}></div>
-                            <div className="abnormal-cell" style={{ top: '35%', left: '25%' }}></div>
-                            <div className="abnormal-cell" style={{ top: '45%', left: '35%' }}></div>
-                            <div className="abnormal-cell" style={{ top: '55%', left: '45%' }}></div>
-                            <div className="abnormal-cell" style={{ top: '65%', left: '55%' }}></div>
-                            <div className="abnormal-cell" style={{ top: '75%', left: '65%' }}></div>
-                            <div className="abnormal-cell" style={{ top: '85%', left: '75%' }}></div>
-                            <div className="abnormal-cell" style={{ top: '15%', left: '75%' }}></div>
-                            <div className="abnormal-cell" style={{ top: '5%', left: '55%' }}></div>
-                            <div className="abnormal-cell" style={{ top: '95%', left: '25%' }}></div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* 缩略图预览 */}
-                      <div className="thumbnail-preview">
-                        <div className="preview-image">
-                          <div className="preview-microscopic-field">
-                            {/* 缩略图中的细胞 */}
-                            <div className="preview-red-cell" style={{ top: '20%', left: '15%' }}></div>
-                            <div className="preview-red-cell" style={{ top: '30%', left: '25%' }}></div>
-                            <div className="preview-red-cell" style={{ top: '40%', left: '35%' }}></div>
-                            <div className="preview-red-cell" style={{ top: '50%', left: '45%' }}></div>
-                            <div className="preview-red-cell" style={{ top: '60%', left: '55%' }}></div>
-                            <div className="preview-red-cell" style={{ top: '70%', left: '65%' }}></div>
-                            <div className="preview-red-cell" style={{ top: '80%', left: '75%' }}></div>
-                            
-                            <div className="preview-abnormal-cell" style={{ top: '25%', left: '20%' }}></div>
-                            <div className="preview-abnormal-cell" style={{ top: '45%', left: '40%' }}></div>
-                            <div className="preview-abnormal-cell" style={{ top: '65%', left: '60%' }}></div>
-                            <div className="preview-abnormal-cell" style={{ top: '85%', left: '80%' }}></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* 图像控制工具 */}
-                    <div className="region-image-controls">
-                      <button className="control-btn" title="测量">
-                        <span>📏</span>
-                      </button>
-                      <button className="control-btn" title="翻转">
-                        <span>🔄</span>
-                      </button>
-                      <button className="control-btn" onClick={handleZoomOut} title="缩小">
-                        <span>🔍-</span>
-                      </button>
-                      <span className="zoom-level">{zoomLevel}%</span>
-                      <button className="control-btn" onClick={handleZoomIn} title="放大">
-                        <span>🔍+</span>
-                      </button>
-                      <button className="control-btn" title="适应屏幕">
-                        <span>⛶</span>
-                      </button>
-                      <button className="control-btn" title="下载">
-                        <span>⬇️</span>
-                      </button>
-                    </div>
-                    
-                    {/* 图像元数据 */}
-                    <div className="image-metadata">
-                      <div className="metadata-item">
-                        <span className="metadata-label">倍率:</span>
-                        <span className="metadata-value">100</span>
-                      </div>
-                      <div className="metadata-item">
-                        <span className="metadata-label">像素:</span>
-                        <span className="metadata-value">214272*206976</span>
-                      </div>
-                      <div className="metadata-item">
-                        <span className="metadata-label">坐标:</span>
-                        <span className="metadata-value">(204651,2144)</span>
-                      </div>
-                      <div className="metadata-item">
-                        <span className="metadata-label">当前图层大小:</span>
-                        <span className="metadata-value">(1984,2352)</span>
-                      </div>
-                      <div className="metadata-item">
-                        <span className="metadata-label">路径:</span>
-                        <span className="metadata-value">F:AutolmageAnalysisData\250722144402020\100x.sdpc</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : activeTab === "标记图像" ? (
-                <div className="marked-images-view">
                   <div className="image-viewer-container">
                     <div className="main-image-container">
                       <div className="image-wrapper" style={{ transform: `scale(${zoomLevel / 100})` }}>
@@ -1355,7 +1439,7 @@ const ImageAnalysis: React.FC = () => {
                           <div className="microscopic-image">
                             <img
                               src={imageData[currentImageIndex].url}
-                              alt={`样本图片 ${currentImageIndex + 1}`}
+                              alt={`区域图片 ${currentImageIndex + 1}`}
                               style={{
                                 width: '100%',
                                 height: '100%',
@@ -1365,7 +1449,7 @@ const ImageAnalysis: React.FC = () => {
                               }}
                               onError={(e) => {
                                 const failedUrl = imageData[currentImageIndex]?.url;
-                                console.error('图片加载失败:', failedUrl);
+                                console.error('区域图片加载失败:', failedUrl);
                                 console.error('错误详情: 可能的原因 - 1) 图片不存在 2) 权限问题(403) 3) 服务器错误(500) 4) URL编码问题');
                                 
                                 const target = e.target as HTMLImageElement;
@@ -1388,15 +1472,15 @@ const ImageAnalysis: React.FC = () => {
                                 }
                               }}
                               onLoad={() => {
-                                console.log('图片加载成功:', imageData[currentImageIndex]?.url);
+                                console.log('区域图片加载成功:', imageData[currentImageIndex]?.url);
                               }}
                             />
                           </div>
                         ) : (
                           <div className="no-images-placeholder">
                             <div className="empty-icon">🖼️</div>
-                            <div className="empty-text">该样本暂无上传的图片</div>
-                            <div className="empty-hint">请在图像管理界面为该样本上传图片</div>
+                            <div className="empty-text">该样本暂无区域图像</div>
+                            <div className="empty-hint">区域图像将从API获取</div>
                           </div>
                         )}
                       </div>
@@ -1499,6 +1583,168 @@ const ImageAnalysis: React.FC = () => {
                       <span className="image-count">
                         {imageData.length > 0 
                           ? `共${imageData.length}张，当前第${currentImageIndex + 1}张`
+                          : '暂无图片'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : activeTab === "标记图像" ? (
+                <div className="marked-images-view">
+                  <div className="image-viewer-container">
+                    <div className="main-image-container">
+                      <div className="image-wrapper" style={{ transform: `scale(${zoomLevel / 100})` }}>
+                        {loadingImages ? (
+                          <div className="loading-placeholder">
+                            <div className="loading-text">加载图片中...</div>
+                          </div>
+                        ) : markedImageData.length > 0 && markedImageData[currentImageIndex] ? (
+                          <div className="microscopic-image">
+                            <img
+                              src={markedImageData[currentImageIndex].url}
+                              alt={`标记图片 ${currentImageIndex + 1}`}
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'contain',
+                                maxWidth: '100%',
+                                maxHeight: '100%'
+                              }}
+                              onError={(e) => {
+                                const failedUrl = markedImageData[currentImageIndex]?.url;
+                                console.error('图片加载失败:', failedUrl);
+                                console.error('错误详情: 可能的原因 - 1) 图片不存在 2) 权限问题(403) 3) 服务器错误(500) 4) URL编码问题');
+                                
+                                const target = e.target as HTMLImageElement;
+                                if (target) {
+                                  target.style.display = 'none';
+                                  // 显示占位符
+                                  const placeholder = document.createElement('div');
+                                  placeholder.className = 'image-placeholder';
+                                  placeholder.innerHTML = `
+                                    <div style="text-align: center; padding: 20px;">
+                                      <div style="font-size: 48px; margin-bottom: 10px;">🖼️</div>
+                                      <div style="color: #999;">图片加载失败</div>
+                                      <div style="font-size: 12px; color: #ccc; margin-top: 5px;">${failedUrl || '未知URL'}</div>
+                                    </div>
+                                  `;
+                                  placeholder.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; min-height: 200px; background: #f5f5f5; border: 1px dashed #ddd;';
+                                  if (target.parentElement) {
+                                    target.parentElement.appendChild(placeholder);
+                                  }
+                                }
+                              }}
+                              onLoad={() => {
+                                console.log('标记图片加载成功:', markedImageData[currentImageIndex]?.url);
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="no-images-placeholder">
+                            <div className="empty-icon">🖼️</div>
+                            <div className="empty-text">该样本暂无标记图像</div>
+                            <div className="empty-hint">标记图像将从SmearRegionTable.marked_image_path字段获取</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* 图像控制栏 */}
+                    <div className="image-controls">
+                      <button className="control-btn" title="提醒">
+                        <span>🔔</span>
+                      </button>
+                      <button className="control-btn" title="测量">
+                        <span>📏</span>
+                      </button>
+                      <button className="control-btn" onClick={handleZoomOut} title="缩小">
+                        <span>🔍-</span>
+                      </button>
+                      <span className="zoom-level">{zoomLevel}%</span>
+                      <button className="control-btn" onClick={handleZoomIn} title="放大">
+                        <span>🔍+</span>
+                      </button>
+                      <button
+                        className="control-btn"
+                        title={isDeletingImage ? "正在删除..." : "删除当前图片"}
+                        onClick={handleDeleteCurrentImage}
+                        disabled={isDeletingImage || markedImageData.length === 0}
+                        aria-label="删除当前图片"
+                      >
+                        <span>{isDeletingImage ? "⏳" : "🗑️"}</span>
+                      </button>
+                      <button className="control-btn" title="全屏">
+                        <span>⛶</span>
+                      </button>
+                      <button className="control-btn" title="下载">
+                        <span>⬇️</span>
+                      </button>
+                    </div>
+                    
+                    {/* 缩略图导航 */}
+                    <div className="thumbnail-carousel">
+                      <button className="carousel-nav left">‹</button>
+                      <div className="thumbnail-strip">
+                        {markedImageData.length > 0 ? (
+                          markedImageData.map((image, index) => (
+                            <div
+                              key={image.id || index}
+                              className={`thumbnail ${index === currentImageIndex ? 'active' : ''}`}
+                              onClick={() => setCurrentImageIndex(index)}
+                            >
+                              <img
+                                src={image.url}
+                                alt={`缩略图 ${index + 1}`}
+                                className="thumbnail-image"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  if (target) {
+                                    target.style.display = 'none';
+                                    target.parentElement?.classList.add('thumbnail-error');
+                                  }
+                                }}
+                              />
+                            </div>
+                          ))
+                        ) : (
+                          <div className="no-thumbnails">暂无图片</div>
+                        )}
+                      </div>
+                      <button className="carousel-nav right">›</button>
+                    </div>
+                    
+                    {/* 导航按钮 */}
+                    <div className="image-navigation">
+                      <button 
+                        className={`nav-btn ${currentImageIndex === 0 ? 'active' : ''}`}
+                        onClick={handleFirstImage}
+                        disabled={markedImageData.length === 0}
+                      >
+                        第一张
+                      </button>
+                      <button 
+                        className={`nav-btn ${currentImageIndex === 0 ? 'disabled' : ''}`}
+                        onClick={handlePreviousImage}
+                        disabled={currentImageIndex === 0 || markedImageData.length === 0}
+                      >
+                        上一张
+                      </button>
+                      <button 
+                        className={`nav-btn ${currentImageIndex === (markedImageData.length - 1) ? 'disabled' : ''}`}
+                        onClick={handleNextImage}
+                        disabled={currentImageIndex === (markedImageData.length - 1) || markedImageData.length === 0}
+                      >
+                        下一张
+                      </button>
+                      <button 
+                        className={`nav-btn ${currentImageIndex === (markedImageData.length - 1) ? 'active' : ''}`}
+                        onClick={handleLastImage}
+                        disabled={markedImageData.length === 0}
+                      >
+                        最后一张
+                      </button>
+                      <span className="image-count">
+                        {markedImageData.length > 0 
+                          ? `共${markedImageData.length}张，当前第${currentImageIndex + 1}张`
                           : '暂无图片'}
                       </span>
                     </div>

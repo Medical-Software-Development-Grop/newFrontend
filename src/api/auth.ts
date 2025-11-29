@@ -1,4 +1,4 @@
-import { API_BASE_URL, setToken, removeToken } from './config';
+import { API_BASE_URL, setToken, removeToken, handleUnauthorized } from './config';
 
 export interface LoginRequest {
   doctor_number: string;
@@ -89,6 +89,10 @@ export const getCurrentUser = async (): Promise<UserInfo> => {
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     removeToken();
     throw new Error('获取用户信息失败');
   }

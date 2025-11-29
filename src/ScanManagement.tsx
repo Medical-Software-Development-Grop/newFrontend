@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import "./ScanManagement.css";
 import { uploadImages, processSamplePipeline } from "./api/image";
 import { getSmears } from "./api/smear";
-import { API_BASE_URL, getUploadHeaders, getToken } from "./api/config";
+import { API_BASE_URL, getUploadHeaders, getToken, handleUnauthorized } from "./api/config";
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 interface TableData {
@@ -127,9 +127,11 @@ const ScanManagement: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const patientFileInputRef = useRef<HTMLInputElement>(null);
   const [sampleNumber, setSampleNumber] = useState<string>("");
-  // 跟踪上传完成状态
+  // 跟踪上传完成状态（保留用于旧的上传功能）
   const [patientUploaded, setPatientUploaded] = useState<boolean>(false);
   const [imageUploaded, setImageUploaded] = useState<boolean>(false);
+  // 计算是否可以选择智能分析：Excel文件和图片文件都已选择
+  const canAnalyze = patientFiles.length > 0 && uploadedFiles.length > 0;
   // SSE 控制器引用（用于取消连接）
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -201,6 +203,7 @@ const ScanManagement: React.FC = () => {
 
         if (!response.ok) {
           if (response.status === 401) {
+            handleUnauthorized();
             throw new Error('401 Unauthorized - 请重新登录');
           }
           const error = await response.json().catch(() => ({ detail: '上传失败' }));
@@ -241,6 +244,102 @@ const ScanManagement: React.FC = () => {
   };
 
   const handleAnalysis = async () => {
+    if (isAnalyzing) return;
+    
+    // 检查是否都已选择文件（新的智能分析接口要求）
+    if (!canAnalyze) {
+      alert('请先选择Excel文件和图片文件');
+      return;
+    }
+    
+    setIsAnalyzing(true);
+    setAnalysisProgress(0);
+    setCurrentSamples(0);
+    setTotalSamples(0);
+    setAnalysisResults([]);
+    setCurrentSampleNumber("");
+    setAnalysisMessage("");
+    
+    try {
+      const token = getToken();
+      
+      // 使用新的智能分析接口，一次性上传Excel和图片文件
+      const formData = new FormData();
+      
+      // 添加Excel文件（只取第一个）
+      if (patientFiles.length > 0) {
+        formData.append('excel_file', patientFiles[0]);
+      }
+      
+      // 添加图片文件
+      uploadedFiles.forEach(file => {
+        formData.append('files', file);
+      });
+      
+      // 添加样本编号（如果填写了）
+      if (sampleNumber && sampleNumber.trim()) {
+        formData.append('sample_number', sampleNumber.trim());
+      }
+      
+      const response = await fetch(`${API_BASE_URL}/api/intelligent-analysis/analyze`, {
+        method: 'POST',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          handleUnauthorized();
+          throw new Error('401 Unauthorized - 请重新登录');
+        }
+        const error = await response.json().catch(() => ({ detail: '智能分析失败' }));
+        throw new Error(error.detail || '智能分析失败');
+      }
+      
+      const result = await response.json();
+      
+      // 显示分析结果
+      setIsAnalyzing(false);
+      setAnalysisProgress(0);
+      
+      let message = '智能分析完成！';
+      if (result.analyzed_samples !== undefined) {
+        message += `\n成功分析: ${result.analyzed_samples} 个样本`;
+      }
+      if (result.failed_samples !== undefined && result.failed_samples > 0) {
+        message += `\n失败: ${result.failed_samples} 个样本`;
+      }
+      if (result.message) {
+        message = result.message;
+      }
+      
+      alert(message);
+      
+      // 清空已选择的文件
+      setPatientFiles([]);
+      setUploadedFiles([]);
+      
+      // 刷新列表数据
+      window.dispatchEvent(new CustomEvent('analysisComplete', { 
+        detail: { 
+          analyzed_samples: result.analyzed_samples || 0,
+          failed_samples: result.failed_samples || 0,
+          results: result.results || []
+        } 
+      }));
+      
+    } catch (err: any) {
+      setIsAnalyzing(false);
+      setAnalysisProgress(0);
+      alert(err.message || '智能分析失败');
+      console.error('智能分析错误:', err);
+    }
+  };
+  
+  // 保留旧的handleAnalysis函数作为备用（如果需要）
+  const handleAnalysisOld = async () => {
     if (isAnalyzing) return;
     
     // 检查是否都已上传完成
@@ -413,6 +512,7 @@ const ScanManagement: React.FC = () => {
                     type="file"
                     ref={patientFileInputRef}
                     style={{ display: 'none' }}
+                    accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
                     onChange={(e) => handleFileSelect(e, 'patient')}
                     multiple
                   />
@@ -481,7 +581,7 @@ const ScanManagement: React.FC = () => {
             <button 
               className={`analysis-button ${isAnalyzing ? 'analyzing' : ''}`}
               onClick={handleAnalysis}
-              disabled={isAnalyzing || !patientUploaded || !imageUploaded}
+              disabled={isAnalyzing || !canAnalyze}
             >
               {isAnalyzing ? (
                 <div className="analysis-progress">
@@ -770,7 +870,7 @@ const ScanManagement: React.FC = () => {
           <button 
             className={`analysis-button ${isAnalyzing ? 'analyzing' : ''}`}
             onClick={handleAnalysis}
-            disabled={isAnalyzing || !patientUploaded || !imageUploaded}
+            disabled={isAnalyzing || !canAnalyze}
           >
             {isAnalyzing ? (
               <div className="analysis-progress">

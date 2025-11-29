@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAuthHeaders } from './config';
+import { API_BASE_URL, getAuthHeaders, handleUnauthorized } from './config';
 
 export interface CellClassification {
   id: number;
@@ -45,6 +45,10 @@ export const getCellClassifications = async (
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     throw new Error('获取细胞分类数据失败');
   }
 
@@ -61,6 +65,10 @@ export const getCellClassificationsBySampleNumber = async (
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     throw new Error('获取细胞分类数据失败');
   }
 
@@ -96,6 +104,10 @@ export const updateCellClassificationByNumber = async (
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     const err = await response.json().catch(() => ({}));
     throw new Error(err.detail || '更新细胞分类失败');
   }
@@ -111,6 +123,10 @@ export const getCellImage = async (cellNumber: string): Promise<Blob> => {
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     const error = await response.json().catch(() => ({ detail: '获取细胞图像失败' }));
     throw new Error(error.detail || '获取细胞图像失败');
   }
@@ -131,6 +147,10 @@ export const getCellsBySampleNumber = async (sampleNumber: string): Promise<Cell
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
     const error = await response.json();
     throw new Error(error.detail || '获取细胞信息失败');
   }
