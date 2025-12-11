@@ -1,8 +1,8 @@
-﻿import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import "./ImageAnalysis.css";
 import { getSmears, Smear } from "./api/smear";
-import { getSampleImages, ImageInfo, deleteSampleImage, getSmearRegions, getImageUrlByStoragePath, SmearRegionsResponse } from "./api/image";
-import { getCellClassifications, getCellClassificationsBySampleNumber, getCellStatistics, CellClassification, updateCellClassificationByNumber } from "./api/cellClassification";
+import { getSampleImages, ImageInfo, deleteSampleImage, getSmearRegions, getImageUrlByStoragePath } from "./api/image";
+import { getCellClassificationsBySampleNumber, CellClassification, updateCellClassificationByNumber } from "./api/cellClassification";
 import { API_BASE_URL, getToken } from "./api/config";
 
 interface CellNode {
@@ -145,11 +145,6 @@ const baseAnnotations = [
   { id: 11, x: 180, y: 500, width: 55, height: 45 }
 ];
 
-// 模拟图像数据
-const imageData = Array.from({ length: 10 }, (_, index) => ({
-  id: index + 1,
-  url: `/api/images/sample-${index + 1}.jpg`
-}));
 
 interface Sample {
   id: string;
@@ -191,7 +186,6 @@ const ImageAnalysis: React.FC = () => {
   const [expandedNodes, setExpandedNodes] = useState<string[]>(["megakaryocyte"]);
   const [selectedNodeId, setSelectedNodeId] = useState<string>("primitive-megakaryocyte");
   const [activeTab, setActiveTab] = useState<string>("细胞图像");
-  const [colorMode, setColorMode] = useState<string>("原始");
   const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -203,9 +197,6 @@ const ImageAnalysis: React.FC = () => {
   const [regionImages, setRegionImages] = useState<ImageInfo[]>([]);
   const [cellImages, setCellImages] = useState<ImageInfo[]>([]);
   const [markedImages, setMarkedImages] = useState<ImageInfo[]>([]);
-  const [totalRegionCount, setTotalRegionCount] = useState<number>(0);
-  const [totalCellCount, setTotalCellCount] = useState<number>(0);
-  const [totalMarkedCount, setTotalMarkedCount] = useState<number>(0);
   const [loadingImages, setLoadingImages] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title?: string; description?: string; cell?: CellClassification } | null>(null);
   const [isDeletingImage, setIsDeletingImage] = useState<boolean>(false);
@@ -534,9 +525,6 @@ const ImageAnalysis: React.FC = () => {
       setRegionImages([]);
       setCellImages([]);
       setMarkedImages([]);
-      setTotalRegionCount(0);
-      setTotalCellCount(0);
-      setTotalMarkedCount(0);
       return;
     }
 
@@ -704,9 +692,6 @@ const ImageAnalysis: React.FC = () => {
       setRegionImages(validRegionImages);
       setCellImages(validCellImages);
       setMarkedImages(validMarkedImages);
-      setTotalRegionCount(regionImagesFromApi.length);
-      setTotalCellCount(cellImagesFromApi.length);
-      setTotalMarkedCount(allMarkedImages.length);
 
       if (validRegionImages.length > 0) {
         setCurrentImageIndex(0);
@@ -731,9 +716,6 @@ const ImageAnalysis: React.FC = () => {
       setRegionImages([]);
       setCellImages([]);
       setMarkedImages([]);
-      setTotalRegionCount(0);
-      setTotalCellCount(0);
-      setTotalMarkedCount(0);
     } finally {
       setLoadingImages(false);
     }
@@ -862,14 +844,6 @@ const ImageAnalysis: React.FC = () => {
     return tree.map(buildNode);
   };
 
-  // 根据选中的细胞类型生成标注
-  const getAnnotationsForSelectedCell = useMemo(() => {
-    if (!selectedNode) return [];
-    return baseAnnotations.map(annotation => ({
-      ...annotation,
-      label: selectedNode.name
-    }));
-  }, [selectedNode]);
 
   const groupsToDisplay = useMemo<CellNode[]>(() => {
     if (!selectedNode) {
@@ -1380,7 +1354,7 @@ const ImageAnalysis: React.FC = () => {
                 <div className="color-mode-selector">
                   <span className="color-mode-label">色彩模式</span>
                   <div className="color-mode-dropdown">
-                    <span className="color-mode-value">{colorMode}</span>
+                    <span className="color-mode-value">原始</span>
                     <span className="dropdown-arrow">▼</span>
                   </div>
                 </div>

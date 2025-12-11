@@ -30,11 +30,12 @@ export interface Checklist {
   patient_number?: string;
   sample_number?: string;
   reviewing_doctor_number?: string;
-  report_analysis?: string;
+  report_analysis?: string; // 分析（诊断分析）
+  diagnosis_opinion?: string; // 意见（诊断结论）- 注意：后端使用 diagnosis_opinion
   typical_figure_1_path?: string;
   typical_figure_2_path?: string;
   check_time?: string;
-  marking_status: string;
+  marking_status: string; // 标记状态：unmarked(未标记), edited(已编辑)
   report_date?: string;
   cell_counts?: CellCounts; // 新的嵌套细胞统计结构
   total_cells?: number; // 细胞总数
@@ -216,10 +217,88 @@ export const getChecklistBySampleNumber = async (sampleNumber: string): Promise<
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
+    if (response.status === 404) {
+      // 检查单不存在，抛出特殊错误以便前端处理
+      const error = new Error('检查单不存在');
+      (error as any).status = 404;
+      throw error;
+    }
+    const error = await response.json().catch(() => ({ detail: '获取检查单失败' }));
     throw new Error(error.detail || '获取检查单失败');
   }
 
   return response.json();
+};
+
+// 报告确认（通过样本编号）⭐推荐使用
+export const confirmReportBySample = async (
+  sampleNumber: string,
+  reportAnalysis: string,
+  diagnosisOpinion: string
+): Promise<{ message: string; checklist_number: string; sample_number: string; marking_status: string; report_date: string }> => {
+  const response = await fetch(`${API_BASE_URL}/api/checklists/sample/${encodeURIComponent(sampleNumber)}/confirm-report`, {
+    method: 'POST',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      report_analysis: reportAnalysis,
+      diagnosis_opinion: diagnosisOpinion
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
+    const error = await response.json().catch(() => ({ detail: '报告确认失败' }));
+    throw new Error(error.detail || '报告确认失败');
+  }
+
+  return response.json();
+};
+
+// 导出PDF报告（通过样本编号）⭐推荐使用
+export const exportChecklistPDFBySample = async (sampleNumber: string): Promise<Blob> => {
+  const response = await fetch(`${API_BASE_URL}/api/checklists/sample/${encodeURIComponent(sampleNumber)}/export-pdf`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
+    const error = await response.json().catch(() => ({ detail: 'PDF导出失败' }));
+    throw new Error(error.detail || 'PDF导出失败');
+  }
+
+  return response.blob();
+};
+
+// 导出PDF报告（通过检查单编号）- 保留作为备选
+export const exportChecklistPDF = async (checklistNumber: string): Promise<Blob> => {
+  const response = await fetch(`${API_BASE_URL}/api/checklists/${encodeURIComponent(checklistNumber)}/export-pdf`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error('401 Unauthorized - 请重新登录');
+    }
+    const error = await response.json().catch(() => ({ detail: 'PDF导出失败' }));
+    throw new Error(error.detail || 'PDF导出失败');
+  }
+
+  return response.blob();
 };
 

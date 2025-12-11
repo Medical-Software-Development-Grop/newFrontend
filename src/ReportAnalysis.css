@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg-muted: #f5f7fb;
   --panel-bg: #ffffff;
   --primary: #2563eb;
@@ -210,6 +210,18 @@
   border: none;
 }
 
+.cell-table thead tr:first-child th {
+  background: #f0f4ff;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 10px;
+  border-bottom: 2px solid #2563eb;
+}
+
+.cell-table thead tr:first-child th.cell-section-title {
+  text-align: center;
+}
+
 .cell-table td:first-child {
   text-align: left;
   font-weight: 500;
@@ -217,7 +229,9 @@
 }
 
 .cell-table td:nth-child(2),
-.cell-table td:nth-child(3) {
+.cell-table td:nth-child(3),
+.cell-table td:nth-child(4),
+.cell-table td:nth-child(5) {
   text-align: center;
 }
 
@@ -318,7 +332,6 @@
   background: #f9fafb;
   color: #6b7280;
   font-size: 14px;
-  cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -328,17 +341,64 @@
   margin-top: 8px;
 }
 
-.upload-tile:hover {
-  background: #f3f4f6;
-  border-color: #9ca3af;
-  color: #374151;
+.image-preview-container {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #e5e9f2;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+  position: relative;
+  min-height: 120px;
 }
 
-.upload-tile::before {
-  content: "+";
-  font-size: 24px;
-  color: #3b82f6;
-  font-weight: bold;
+.preview-image {
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+  display: block;
+  background: #f9fafb;
+}
+
+.image-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #6b7280;
+  font-size: 14px;
+  z-index: 1;
+}
+
+.image-controls {
+  padding: 8px;
+  background: #f9fafb;
+  border-top: 1px solid #e5e9f2;
+  display: flex;
+  justify-content: center;
+}
+
+.change-image-btn {
+  padding: 6px 12px;
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.change-image-btn:hover:not(:disabled) {
+  background: #2563eb;
+  transform: translateY(-1px);
+}
+
+.change-image-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .sidebar-actions {
@@ -693,4 +753,25 @@
 .empty-hint {
   font-size: 14px;
   color: #9ca3af;
+}
+
+/* 箭头指示器样式 */
+.arrow-indicator {
+  display: inline-block;
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.arrow-indicator.arrow-up {
+  color: #ef4444;
+}
+
+.arrow-indicator.arrow-down {
+  color: #3b82f6;
+}
+
+.cell-table td:last-child {
+  text-align: center;
 }

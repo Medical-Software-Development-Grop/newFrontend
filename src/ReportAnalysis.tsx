@@ -2,8 +2,8 @@ import React, { useMemo, useState, useEffect } from "react";
 import "./ReportAnalysis.css";
 import { getSmears, Smear } from "./api/smear";
 import { getCellStatistics, CellStatistics } from "./api/cellClassification";
-import { getChecklistBySampleNumber, updateChecklist, exportChecklistPDF, Checklist, CellCounts } from "./api/checklist";
-import { getSmearRegions, getImageUrlByStoragePath, SmearRegionsResponse } from "./api/image";
+import { getChecklistBySampleNumber, confirmReportBySample, exportChecklistPDFBySample, Checklist } from "./api/checklist";
+import { getSmearRegions, getImageUrlByStoragePath } from "./api/image";
 
 // 将后端Smear数据转换为前端Sample格式
 interface Sample {
@@ -234,13 +234,26 @@ const ReportAnalysis: React.FC = () => {
       try {
         // 优先使用检查单获取细胞计数（包含 cell_counts 字段）
         try {
+          // 根据文档，后端会自动处理检查单的创建和自动生成诊断分析/结论
+          // 前端只需要调用获取接口即可
           const checklistData = await getChecklistBySampleNumber(selectedSample.sampleNumber);
+          
           setChecklist(checklistData);
           console.log('检查单数据:', checklistData);
           console.log('细胞计数:', checklistData.cell_counts);
+          
+          // 根据标记状态决定加载数据库内容还是后端自动生成的内容
+          // 后端会在 marking_status 为 "unmarked" 且内容为空时自动生成
+          // 前端直接使用后端返回的内容（无论是数据库中的还是自动生成的）
+          setDiagnosisAnalysis(checklistData.report_analysis || "");
+          setDiagnosis(checklistData.diagnosis_opinion || ""); // 注意：使用 diagnosis_opinion
+          
+          // 后端会自动生成或返回数据库中的内容，前端直接使用即可
         } catch (checklistErr: any) {
           console.warn('获取检查单失败，尝试使用细胞统计接口:', checklistErr);
           setChecklist(null);
+          setDiagnosisAnalysis("");
+          setDiagnosis("");
         }
 
         // 同时获取细胞统计信息（作为补充）
@@ -557,96 +570,63 @@ const ReportAnalysis: React.FC = () => {
     }));
   }, [checklist, totalCells]);
 
-  // 计算各系统的细胞数量（使用新的大类映射）
-  const getSystemCellCount = (sectionId: string): number => {
-    // 前端 section ID 到后端大类名称的映射
-    const sectionToCategoryMapping: Record<string, string> = {
-      "red": "幼红系列",
-      "lymphocyte": "淋巴细胞系",
-      "megakaryocyte": "巨核细胞系",
-      "granular": "中性粒细胞系统",
-      "primitive": "中性粒细胞系统", // 原始细胞归入中性粒细胞系统
-      "monocyte": "单核细胞系",
-      "other": "组织类细胞"
-    };
-    
-    const categoryName = sectionToCategoryMapping[sectionId];
-    if (categoryName) {
-      return getCategoryCount(categoryName);
-    }
-    
-    // 兼容旧逻辑：如果没有大类数据，则累加子类
-    const section = cellSections.find(s => s.id === sectionId);
-    if (!section) return 0;
-    
-    return section.rows.reduce((sum, row) => {
-      return sum + getCellCount(row.name);
-    }, 0);
-  };
 
-  // 当页面大小改变时，调整当前页面
-  useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(totalCount / pageSize));
-    setCurrentPage(prev => Math.min(prev, maxPage));
-  }, [pageSize, totalCount]);
+  // 注意：预设诊断分析和诊断结论的生成已由后端处理
+  // 后端会在 marking_status 为 "unmarked" 且内容为空时自动生成
+  // 前端只需要显示后端返回的内容即可，不需要自己生成
 
-  // 报告确认：保存诊断分析、诊断结论和图像路径
+  // 报告确认：保存诊断分析、诊断结论（通过样本编号）⭐
   const handleConfirmReport = async () => {
-    if (!checklist || !checklist.id) {
-      alert('请先选择样本并加载检查单数据');
-      return;
-    }
-
     if (!selectedSample) {
       alert('请先选择样本');
       return;
     }
 
     try {
-      // 将诊断分析和诊断结论合并保存到report_analysis字段
-      // 格式：诊断分析\n\n诊断结论
-      const reportContent = diagnosisAnalysis 
-        ? (diagnosis ? `${diagnosisAnalysis}\n\n诊断结论：${diagnosis}` : diagnosisAnalysis)
-        : (diagnosis ? `诊断结论：${diagnosis}` : '');
+      // 调用报告确认接口（通过样本编号）
+      await confirmReportBySample(
+        selectedSample.sampleNumber,
+        diagnosisAnalysis,
+        diagnosis
+      );
       
-      const updateData: Partial<Checklist> = {
-        report_analysis: reportContent || undefined,
-        typical_figure_1_path: reportImages.sampleRegion?.storagePath || undefined,
-        typical_figure_2_path: reportImages.markedRegion?.storagePath || undefined,
-        report_date: new Date().toISOString().split('T')[0], // 报告日期
-      };
-
-      // 如果后端支持单独的诊断结论字段，可以添加
-      // 这里暂时将诊断结论和诊断分析合并，或者使用report_analysis存储诊断分析，诊断结论需要后端支持新字段
-      
-      await updateChecklist(checklist.id, updateData);
       alert('报告确认成功！');
       
       // 重新加载检查单数据
       const updatedChecklist = await getChecklistBySampleNumber(selectedSample.sampleNumber);
       setChecklist(updatedChecklist);
+      
+      // 更新诊断分析和诊断结论（从数据库加载）
+      if (updatedChecklist.report_analysis) {
+        setDiagnosisAnalysis(updatedChecklist.report_analysis);
+      }
+      if (updatedChecklist.diagnosis_opinion) {
+        setDiagnosis(updatedChecklist.diagnosis_opinion);
+      }
     } catch (err: any) {
       console.error('报告确认失败:', err);
       alert(`报告确认失败: ${err.message || '未知错误'}`);
     }
   };
 
-  // PDF导出功能 - 通过后端LaTeX生成
+  // PDF导出功能 - 通过后端LaTeX生成（通过样本编号）⭐
   const handleExportPDF = async () => {
-    if (!selectedSample || !checklist || !checklist.checklist_number) {
-      alert('请先选择样本并加载检查单数据');
+    if (!selectedSample) {
+      alert('请先选择样本');
       return;
     }
 
     try {
-      // 调用后端API生成PDF
-      const pdfBlob = await exportChecklistPDF(checklist.checklist_number);
+      // 调用后端API生成PDF（通过样本编号）
+      const pdfBlob = await exportChecklistPDFBySample(selectedSample.sampleNumber);
       
       // 创建下载链接
       const url = window.URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
-      const reportDate = checklist.report_date || new Date().toISOString().split('T')[0];
+      const reportDate = checklist?.report_date 
+        ? new Date(checklist.report_date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
       link.download = `细胞形态学报告_${selectedSample.sampleNumber}_${reportDate}.pdf`;
       document.body.appendChild(link);
       link.click();
@@ -658,16 +638,6 @@ const ReportAnalysis: React.FC = () => {
     }
   };
 
-  const getStatusClass = (status: Sample["status"]): string => {
-    switch (status) {
-      case "图像已审核":
-        return "status-success";
-      case "报告已审核":
-        return "status-info";
-      default:
-        return "status-pending";
-    }
-  };
 
   // 解析参考值字符串，返回最小值和最大值
   const parseReference = (reference: string): { min: number | null; max: number | null } => {
